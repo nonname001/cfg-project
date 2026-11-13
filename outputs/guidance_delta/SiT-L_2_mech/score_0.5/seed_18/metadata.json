@@ -1,0 +1,39 @@
+{
+  "seed": 18,
+  "w": 4.0,
+  "classes": [
+    207,
+    360,
+    387,
+    974,
+    88,
+    979,
+    417,
+    279
+  ],
+  "class_names": [
+    "golden retriever",
+    "otter",
+    "lesser panda",
+    "geyser",
+    "macaw",
+    "valley",
+    "balloon",
+    "arctic fox"
+  ],
+  "sampler": "euler",
+  "model_calls": 49,
+  "checkpoint": {
+    "path": "pretrained_models/SiT-L-2-256_BiliSakura_2f02393/transformer.safetensors",
+    "sha256": "fd3c19ec1a7675f5648f5200acf4f1a94ae6a44ff5ff81a1011de8242d12edd6",
+    "source": "huggingface.co/BiliSakura/SiT-diffusers @ 2f02393a3079dfa6210c10302cc927f59d2cb142, SiT-L-2-256/transformer/diffusion_pytorch_model.safetensors (community upload, origin of L/2 weights undocumented)",
+    "model": "SiT-L/2"
+  },
+  "guided_channels": 3,
+  "noise_sha256": "b406178660aa79ed7ba8328e898bb9bddd65752f504c07ef3f42bc022fd7e475",
+  "final_sha256": "f026da4be6eccfa30321c17d245d8905af9a0048c61614bf8f2c2d412a759fdb",
+  "seconds": 149.2,
+  "window": null,
+  "condition": "score_0.5",
+  "intervention": "score_0.5"
+}

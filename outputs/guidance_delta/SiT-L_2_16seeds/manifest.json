@@ -1,0 +1,77 @@
+{
+  "checkpoint": {
+    "path": "pretrained_models/SiT-L-2-256_BiliSakura_2f02393/transformer.safetensors",
+    "sha256": "fd3c19ec1a7675f5648f5200acf4f1a94ae6a44ff5ff81a1011de8242d12edd6",
+    "source": "huggingface.co/BiliSakura/SiT-diffusers @ 2f02393a3079dfa6210c10302cc927f59d2cb142, SiT-L-2-256/transformer/diffusion_pytorch_model.safetensors (community upload, origin of L/2 weights undocumented)",
+    "model": "SiT-L/2"
+  },
+  "classes": [
+    207,
+    360,
+    387,
+    974,
+    88,
+    979,
+    417,
+    279
+  ],
+  "class_names": [
+    "golden retriever",
+    "otter",
+    "lesser panda",
+    "geyser",
+    "macaw",
+    "valley",
+    "balloon",
+    "arctic fox"
+  ],
+  "null_class": 1000,
+  "seed_use": "torch.Generator().manual_seed(seed) on CPU; torch.randn(8, 4, 32, 32); identical across w",
+  "w_definition": "f_uncond + w * (f_cond - f_uncond), on the first guided_channels channels",
+  "guided_channels": 3,
+  "unguided_channel_behavior": "channel 3 always takes f_cond; at w=1 all channels equal f_cond",
+  "parameterization": "velocity (native model output)",
+  "path_type": "Linear",
+  "prediction": "velocity",
+  "sampler": "euler",
+  "deterministic": true,
+  "grid_points": 50,
+  "model_calls": 49,
+  "time_convention": "s_t=0 noise, s_t=1 data",
+  "x_hat": "x_t + (1 - s_t) * f_guided, the predicted clean latent",
+  "token_layers_zero_indexed": [
+    4,
+    12,
+    22
+  ],
+  "token_steps": [
+    0,
+    5,
+    11,
+    16,
+    21,
+    27,
+    32,
+    37,
+    43,
+    48
+  ],
+  "activation_site": "output of model.blocks[i], before final_layer",
+  "branch_axis": "0 = conditional, 1 = unconditional",
+  "device": "mps",
+  "dtype": "float32",
+  "sit_commit": "cbde832a40b153ccc79603412409da9c9b0c568c",
+  "sit_dirty": false,
+  "python": "3.12.13",
+  "platform": "macOS-26.4.1-arm64-arm-64bit",
+  "machine": "arm64",
+  "packages": {
+    "torch": "2.15.0",
+    "torchvision": "0.29.2",
+    "torchdiffeq": "0.2.5",
+    "diffusers": "0.42.1",
+    "timm": "1.0.31",
+    "numpy": "2.5.4",
+    "safetensors": "0.8.0"
+  }
+}

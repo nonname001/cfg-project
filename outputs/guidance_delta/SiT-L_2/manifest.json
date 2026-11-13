@@ -1,0 +1,116 @@
+{
+  "command": "bench/guidance_delta.py --model SiT-L/2 --weights pretrained_models/SiT-L-2-256_BiliSakura_2f02393/transformer.safetensors --out outputs/guidance_delta/SiT-L_2 --seeds 0 1 2 3 4 5 6 7 --steps 50 --cfg 4.0 --device mps",
+  "model": "SiT-L/2",
+  "weights": "pretrained_models/SiT-L-2-256_BiliSakura_2f02393/transformer.safetensors",
+  "weights_sha256": "fd3c19ec1a7675f5648f5200acf4f1a94ae6a44ff5ff81a1011de8242d12edd6",
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "seed_use": "torch.Generator().manual_seed(seed) on CPU; torch.randn(8, 4, 32, 32)",
+  "labels": [
+    207,
+    360,
+    387,
+    974,
+    88,
+    979,
+    417,
+    279
+  ],
+  "label_names": [
+    "golden retriever",
+    "otter",
+    "lesser panda",
+    "geyser",
+    "macaw",
+    "valley",
+    "balloon",
+    "arctic fox"
+  ],
+  "null_class": 1000,
+  "conditioning": "ImageNet class label (SiT has no text prompts)",
+  "cfg_scale": 4.0,
+  "guided_channels": 3,
+  "parameterization": "velocity (native model output)",
+  "delta": "v_cond - v_uncond, both evaluated at the guided x_t, all 4 latent channels",
+  "path_type": "Linear",
+  "prediction": "velocity",
+  "solver": "torchdiffeq euler via Sampler.sample_ode",
+  "grid_points": 50,
+  "model_calls": 49,
+  "time_convention": "t=0 noise, t=1 data",
+  "device": "mps",
+  "dtype": "float32",
+  "sit_commit": "cbde832a40b153ccc79603412409da9c9b0c568c",
+  "sit_dirty": false,
+  "python": "3.12.13",
+  "platform": "macOS-26.4.1-arm64-arm-64bit",
+  "machine": "arm64",
+  "packages": {
+    "torch": "2.15.0",
+    "torchvision": "0.29.2",
+    "torchdiffeq": "0.2.5",
+    "diffusers": "0.42.1",
+    "timm": "1.0.31",
+    "numpy": "2.5.4",
+    "safetensors": "0.8.0"
+  },
+  "runs": [
+    {
+      "seed": 0,
+      "seconds": 146.7,
+      "noise_sha256": "7b9c2ab2a50d4479534fbdafcbce6ea5b45b09d25ba1249191f6d5be4c2cff62",
+      "final_sha256": "e1c761d24607446ddfba7cebc587a87f52923600be34a3dc0f84822e26f2e5b3"
+    },
+    {
+      "seed": 1,
+      "seconds": 132.0,
+      "noise_sha256": "8c32bcd2a96d6d2540b69cd5cdd895915af3749b248b263cf6b8b89518f299fd",
+      "final_sha256": "1e9a31768d9d101e609b2a0485ce5ebf8acf16863a287222a7a5901df1765ffe"
+    },
+    {
+      "seed": 2,
+      "seconds": 133.3,
+      "noise_sha256": "dede33b528c22a02279fba8c68e2f17b38ec74692ed4300758f629d47491cb98",
+      "final_sha256": "eba3f33eb23954e5b7cc920fa48eb9cb270c0ddca6c07411b154b0153fb8206b"
+    },
+    {
+      "seed": 3,
+      "seconds": 147.2,
+      "noise_sha256": "2689199808230c5f3f236893a5d519c35d0c3b738b24892aef85d7c246bec89d",
+      "final_sha256": "c29481b843ebfe21306442061477f9729d0fd943891b74459a1bb8cdd77312e9"
+    },
+    {
+      "seed": 4,
+      "seconds": 138.9,
+      "noise_sha256": "2cd0f37a9f876fc8aef1cb6d511b382dfbab4e11482a7dbfb250ab7e35aae5d3",
+      "final_sha256": "bd841a1586ef8dd71df64c957d9787136f3f2d4e37b1749987e97da418ce33bb"
+    },
+    {
+      "seed": 5,
+      "seconds": 147.1,
+      "noise_sha256": "0ac4be70fa28da43331cc8c88e798e0a6664c9615536f902fd07e602e1e5e514",
+      "final_sha256": "2511a70576418082eef3e13c54faaef82a9160481b5fd6b140944eddba850ba3"
+    },
+    {
+      "seed": 6,
+      "seconds": 150.2,
+      "noise_sha256": "6a7c4dcde3e71c7cffba5a9874b75c8b6358a3a10f9d35c87b237543c95f9283",
+      "final_sha256": "c7e57a05d453229caad647455ed23e7b5dac61ca6e4ae6e47ca8955c94d39b9c"
+    },
+    {
+      "seed": 7,
+      "seconds": 146.3,
+      "noise_sha256": "daad3a4eb2608b23adb4abc5364fc55dbc0fbf5fa9b4589f6b922a4c782a8ce5",
+      "final_sha256": "a07ab3a901e2bbb8defdce9493f22c6ba13c632d1230cf8b7a11f646bd2a087c"
+    }
+  ],
+  "weights_source": "huggingface.co/BiliSakura/SiT-diffusers @ 2f02393a3079dfa6210c10302cc927f59d2cb142, SiT-L-2-256/transformer/diffusion_pytorch_model.safetensors (community upload, origin of L/2 weights undocumented)"
+}

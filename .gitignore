@@ -1,0 +1,19 @@
+# Environment and caches
+.venv/
+__pycache__/
+.DS_Store
+
+# Model weights: download per README.md (the SiT-L/2 file is a community upload, not re-hosted here)
+pretrained_models/
+
+# Raw experiment arrays (about 130 GB); regenerate with the commands in README.md
+*.npy
+*.npz
+!outputs/guidance_delta/SiT-L_2_16seeds/analysis/intervention_tables.npz
+
+# Decoded images and embeddings are derived from the raw arrays
+**/samples/
+**/embeddings/
+
+# A run stopped after two seeds; superseded by SiT-L_2_mech
+outputs/guidance_delta/SiT-L_2_seeds8-15/

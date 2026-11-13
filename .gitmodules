@@ -1,0 +1,3 @@
+[submodule "sit"]
+	path = sit
+	url = https://github.com/willisma/sit
