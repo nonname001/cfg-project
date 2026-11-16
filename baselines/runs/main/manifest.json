@@ -1,0 +1,18 @@
+{
+  "weights": "pretrained_models/SiT-XL-2-256x256.pt",
+  "model": "SiT-XL/2",
+  "labels": [
+    207,
+    360,
+    387,
+    974,
+    88,
+    979,
+    417,
+    279
+  ],
+  "steps": 50,
+  "sampler": "euler, own loop (see check.py)",
+  "torch": "2.7.1",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O"
+}
