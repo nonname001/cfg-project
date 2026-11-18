@@ -28,14 +28,14 @@ Where each method acts, from the outside of the network inward:
   cond                              before the blocks, on the class embedding that conditions every block (condition space)
   feat                              inside the network, on the outputs of blocks 13-23 (feature space)
 """
-import argparse, hashlib, json, sys, time
+import argparse, json, sys, time
 from pathlib import Path
 
 import numpy as np
 import torch
 
 sys.path.insert(0, "bench")
-from guidance_delta import GUIDED_CHANNELS, LABELS, NULL_CLASS, array_sha256, initial_noise, load_model, sha256
+from common import GUIDED_CHANNELS, LABELS, NULL_CLASS, array_sha256, initial_noise, load_model, sha256
 from transport import Sampler, create_transport
 
 W = 4.0  # guidance scale every intervention starts from
@@ -43,8 +43,8 @@ EARLY_END = 0.3  # interventions act only while s_t < 0.3, the early phase where
 RANK = 3  # dimensions of each class's shared subspace
 LOW_CUTOFF = 4  # low-pass radius for freq, in cycles per 32-pixel latent (Nyquist is 16)
 FEATURE_BLOCKS = list(range(13, 24))  # the later blocks, where w = 4 lowered effective rank in the 16-seed run
-CONDITIONS = ["w1", "w4", "scalar_0.5", "scalar_1", "score_0.5", "score_1", "freq_0.5", "freq_1", "cond_0.5", "cond_1",
-              "feat_0.5", "feat_1", "wrongclass_1"]
+# The conditions the report's intervention table uses (score_0.5 also appears in its shuffled-push comparison).
+CONDITIONS = ["w1", "w4", "scalar_1", "score_0.5", "score_1", "freq_1", "cond_0.5", "cond_1", "feat_1", "wrongclass_1"]
 
 
 def build_tables(run, path, seeds=range(16)):
@@ -137,9 +137,9 @@ class Intervention:
         self.handles = []
 
     def adjust(self, out, last):
-        """out: forward_with_cfg's result; last: the raw branch outputs it was built from. Returns (out, removed fraction)."""
+        """out: forward_with_cfg's result; last: the raw branch outputs it was built from. Returns the adjusted out."""
         if not (self.active and "score" in self.parts):
-            return out, 0.0
+            return out
         n = self.n
         delta = (last[:n, :GUIDED_CHANNELS] - last[n:, :GUIDED_CHANNELS]).float()  # (n, 3, 32, 32)
         basis = self.tables["latent"]  # (n classes, 3, 3072): sample i uses its own class's basis
@@ -149,8 +149,7 @@ class Intervention:
         out = out.clone()  # do not edit forward_with_cfg's tensor in place
         # out is f_cond + (W-1) Delta on the guided channels; removing (W-1) * L * P Delta leaves f_cond + (W-1)(Delta - L P Delta).
         out[:n, :GUIDED_CHANNELS] -= (W - 1) * self.parts["score"] * part
-        # Share of Delta's energy lying in the subspace, summed over the whole batch (logged as `removed`).
-        return out, float((part ** 2).sum() / (delta ** 2).sum())
+        return out
 
 
 def load_tables(path, device):
@@ -161,7 +160,7 @@ def load_tables(path, device):
 
 
 def run_condition(model, sample_fn, condition, seed, device, tables):
-    """Sample one batch. Returns final latents and, per step, the fraction of ||Delta||^2 the condition removed from guidance."""
+    """Sample one batch under one condition. Returns (initial noise, final latents)."""
     method, strength = parse(condition)
     n = len(LABELS)
     z = initial_noise(seed)
@@ -169,7 +168,6 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
     y = torch.tensor(LABELS + [NULL_CLASS] * n, device=device)
     # State shared between the sampler wrapper and the hooks: whether this step is in the window, and the raw branch outputs.
     state = dict(active=False, last=None)
-    removed = []
     excess = (W - 1) / W  # the share of the class signal that cond and feat remove at strength 1
 
     basis = None
@@ -192,7 +190,6 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
             # w1: no guidance at any step. scalar: a smaller w during the window, the same in every direction.
             kwargs["cfg_scale"] = 1.0 if method == "w1" else 1 + (W - 1) * (1 - strength)
         out = model.forward_with_cfg(xb, tb, **kwargs)
-        fraction = 0.0
         if state["active"] and method in ("score", "wrongclass", "freq"):
             last = state["last"]
             delta = (last[:n, :GUIDED_CHANNELS] - last[n:, :GUIDED_CHANNELS]).float()
@@ -205,8 +202,6 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
                 part = torch.einsum("nk,nkd->nd", torch.einsum("nkd,nd->nk", basis, flat), basis).reshape(delta.shape)
             out = out.clone()
             out[:n, :GUIDED_CHANNELS] -= (W - 1) * strength * part  # excess guidance loses L * part
-            fraction = float((part ** 2).sum() / (delta ** 2).sum())
-        removed.append(fraction)
         return out
 
     def embed_hook(_module, _inputs, emb):  # rows [:n] are class embeddings, rows [n:] the null embedding
@@ -243,7 +238,7 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
         for handle in handles:
             handle.remove()
     assert np.isfinite(final).all(), f"non-finite final latents: {condition} seed {seed}"
-    return z.numpy(), final, np.array(removed)
+    return z.numpy(), final
 
 
 def main():
@@ -292,12 +287,12 @@ def main():
                 continue
             target.parent.mkdir(exist_ok=True)
             start = time.perf_counter()
-            z, final, removed = run_condition(model, sample_fn, condition, seed, a.device, tables)
+            z, final = run_condition(model, sample_fn, condition, seed, a.device, tables)
             seconds = time.perf_counter() - start
             tmp = target.with_suffix(".tmp.npz")
-            np.savez(tmp, seed=seed, z=z, final=final, removed=removed, seconds=seconds, noise_sha256=array_sha256(z), final_sha256=array_sha256(final))
+            np.savez(tmp, seed=seed, z=z, final=final, seconds=seconds, noise_sha256=array_sha256(z), final_sha256=array_sha256(final))
             tmp.rename(target)  # a file at the final path is always complete
-            print(f"{condition} seed={seed}: {seconds:.1f}s removed(t=0)={removed[0]:.3f}", flush=True)
+            print(f"{condition} seed={seed}: {seconds:.1f}s", flush=True)
 
 
 if __name__ == "__main__":
