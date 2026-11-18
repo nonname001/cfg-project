@@ -96,20 +96,23 @@ def fig_decomposition(a, out):
     save(fig, out, "m2_direct_vs_trajectory.png", (0, 0, 1, 0.92))
 
 
-def fig_blocks(a, out):
+def block_maps(a, out, rows, title, subtitle, name):
+    """2-D (time x block) maps of each row's metric for three conditions, relative to w=4. rows: (key, label, compare)."""
     b = read(a / "mech_blocks.csv")
     ref = select(b, condition="w4")
     t = np.unique(ref["t"])
     grid = lambda d, k: np.array([[d[k][(d["block"] == blk) & (d["step"] == s)][0] for s in range(len(t))] for blk in range(24)])
     conditions = ["score_1", "cond_0.5", "score_1+cond_0.5"]
-    fig, axes = plt.subplots(2, 3, figsize=(13, 7), sharex=True, sharey=True, dpi=170, facecolor=SURFACE)
-    for row, (k, label) in enumerate((("V", "scale-free spread V, log2 vs w=4"), ("signal_S", "class-signal S, minus w=4"))):
+    single = len(rows) == 1
+    fig, axes = plt.subplots(len(rows), 3, figsize=(13, 4.3 if single else 3.5 * len(rows)), sharex=True, sharey=True, dpi=170, facecolor=SURFACE, squeeze=False)
+    fig.subplots_adjust(top=0.8 if single else 0.88, bottom=0.14 if single else 0.08, left=0.06, right=0.9)  # before the colorbars, so they match the panels
+    for row, (k, label, compare) in enumerate(rows):
         base = grid(ref, k)
-        maps = [np.log2(grid(select(b, condition=c), k) / base) if k == "V" else grid(select(b, condition=c), k) - base for c in conditions]
+        maps = [compare(grid(select(b, condition=c), k), base) for c in conditions]
         limit = max(np.nanmax(np.abs(m)) for m in maps)
         for col, (c, m) in enumerate(zip(conditions, maps)):
             ax = axes[row, col]
-            im = ax.imshow(m, aspect="auto", origin="lower", extent=(t[0], t[-1], -0.5, 23.5), cmap=DIVERGING,  # blue = higher than w=4, red = lower, in both rows
+            im = ax.imshow(m, aspect="auto", origin="lower", extent=(t[0], t[-1], -0.5, 23.5), cmap=DIVERGING,  # blue = higher than w=4, red = lower, in every row
                            norm=TwoSlopeNorm(0, -limit, limit), interpolation="nearest")
             ax.axvline(0.3, color=INK, lw=0.8, ls=":")
             ax.tick_params(colors=MUTED, length=0, labelsize=8)
@@ -118,15 +121,30 @@ def fig_blocks(a, out):
             ax.set_title(f"{c.replace('+', ' + ')}: {label}", loc="left", color=INK, fontsize=9)
             if col == 0:
                 ax.set_ylabel("block", color=MUTED, fontsize=9)
-            if row == 1:
+            if row == len(rows) - 1:
                 ax.set_xlabel("t  (0 = noise, 1 = data)", color=MUTED, fontsize=9)
         bar = fig.colorbar(im, ax=axes[row].tolist(), fraction=0.015, pad=0.01)
         bar.outline.set_visible(False)
         bar.ax.tick_params(colors=MUTED, length=0, labelsize=8)
-    header(fig, BLOCKS_TITLE, "Pooled conditional features, 16 seeds per class. Blue = higher than w=4, red = lower. Top: cross-seed spread. Bottom: how much of the class signal seeds share.", 0.958)
-    fig.subplots_adjust(top=0.88, left=0.06, right=0.9)
-    fig.savefig(out / "m3_block_maps.png", facecolor=SURFACE)
+    header(fig, title, subtitle, 0.93 if single else 0.958)
+    fig.savefig(out / name, facecolor=SURFACE)
     plt.close(fig)
+
+
+LOG_RATIO = lambda m, base: np.log2(m / base)
+DIFF = lambda m, base: m - base
+
+
+def fig_blocks(a, out):
+    block_maps(a, out, (("V", "scale-free spread V, log2 vs w=4", LOG_RATIO), ("signal_S", "class-signal S, minus w=4", DIFF)), BLOCKS_TITLE,
+               "Pooled conditional features, 16 seeds per class. Blue = higher than w=4, red = lower. Top: cross-seed spread. Bottom: how much of the class signal seeds share.",
+               "m3_block_maps.png")
+
+
+def fig_block_rank(a, out):
+    block_maps(a, out, (("eff_rank", "effective rank, minus w=4", DIFF),), RANK_TITLE,
+               "Pooled conditional features. Effective rank of the 16 seeds per class (max 15), averaged over 8 classes. Blue = higher than w=4, red = lower.",
+               "m3b_block_rank.png")
 
 
 def fig_curves(a, out):
@@ -151,6 +169,7 @@ DOSE_TITLE = "Dose response of score and condition damping"
 DECOMP_TITLE = "Where each intervention changes the class signal inside the network"
 BLOCKS_TITLE = "Internal changes relative to w = 4, by block and time"
 CURVES_TITLE = "Guidance statistics over time for every condition"
+RANK_TITLE = "All three raise effective rank, most in the later blocks; the combination raises it most"
 
 
 def main():
@@ -168,6 +187,7 @@ def main():
     fig_dose(s, out)
     fig_decomposition(analysis, out)
     fig_blocks(analysis, out)
+    fig_block_rank(analysis, out)
     fig_curves(analysis, out)
 
 
