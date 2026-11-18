@@ -35,6 +35,7 @@ def branches(model, x, t, device):
 
 
 def main():
+    """Run the four checks on one seed of a guidance_delta.py run and write verify_seed_<n>.json next to the data."""
     p = argparse.ArgumentParser()
     p.add_argument("--run", required=True)
     p.add_argument("--seed", type=int, default=0)
@@ -43,6 +44,7 @@ def main():
     a = p.parse_args()
     torch.set_grad_enabled(False)
 
+    # Every setting (model, weights, w, grid, device) is read back from the run's manifest, so the checks use exactly what the run used.
     man = json.loads((Path(a.run) / "manifest.json").read_text())
     d = np.load(Path(a.run) / f"seed_{a.seed}.npz")
     t, x, delta, v_u, final = d["t"], d["x"], d["delta"], d["v_uncond"], d["final"]

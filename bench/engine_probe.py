@@ -1,5 +1,8 @@
 """One-forward timing of a SiT config at sample.py's effective batch (16 = 8 + CFG) for ONE engine, with parity vs CPU fp32.
-usage: engine_probe.py <engine: cpu|mps|mlx> <dtype: float32|float16|bfloat16> [model]"""
+usage: engine_probe.py <engine: cpu|mps|mlx> <dtype: float32|float16|bfloat16> [model]
+
+A quicker check than worker.py: a single forward pass instead of a full 49-step sampling run, with random weights.
+"""
 import sys, time, statistics as st
 sys.path.insert(0, "sit"); sys.path.insert(0, "bench")
 import numpy as np, torch
@@ -12,11 +15,12 @@ m = SiT_models[name](input_size=32, num_classes=1000, learn_sigma=True).eval()
 for k, v in m.named_parameters():  # un-zero adaLN/final so parity exercises every block
     if "adaLN_modulation" in k or "final_layer.linear" in k:
         torch.nn.init.normal_(v, std=0.02)
-sd = {k: v.clone() for k, v in m.state_dict().items()}
+sd = {k: v.clone() for k, v in m.state_dict().items()}  # copy before m may be moved/cast below, for the MLX port
 x = torch.randn(16, 4, 32, 32); t = torch.rand(16); y = torch.randint(0, 1000, (16,))
-ref = m(x, t, y).numpy()
+ref = m(x, t, y).numpy()  # CPU fp32 reference output
 
 def bench(fn, sync, n):
+    """Median wall time of n calls in milliseconds, after one warm-up call. sync waits for the GPU to finish each call."""
     fn(); sync(); ts = []
     for _ in range(n):
         a = time.perf_counter(); fn(); sync(); ts.append(time.perf_counter() - a)
@@ -35,6 +39,6 @@ else:
     mm = SiTMLX(sd, name, dtype=getattr(mx, dts))
     xm, tm, ym = mx.array(x.numpy()), mx.array(t.numpy()), mx.array(y.numpy())
     def f():
-        o = mm(xm, tm, ym); mx.eval(o); return o
+        o = mm(xm, tm, ym); mx.eval(o); return o  # mx.eval forces MLX's lazy computation, so the timing is real
     ms = bench(f, lambda: None, 5); out = np.array(f())
 print(f"{eng} {dts:9s} {ms:9.1f} ms/fwd  maxerr {np.abs(out-ref).max():.2e}  (ref absmax {np.abs(ref).max():.2f})")

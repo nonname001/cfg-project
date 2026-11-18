@@ -1,6 +1,11 @@
 """Plot the tables from guidance_analysis.py into <run>/analysis/figures/.
 
 usage: guidance_figures.py --run <dir> [--only 1 2 ...]
+
+Each fig_* function reads one or more CSV tables and writes one PNG. The helpers at the top (read, select, style, header, save)
+are shared with guidance_mech_figures.py and guidance_intervene_eval.py so every figure looks the same.
+Note: the --only keys are positions in the `figures` dict in main(), not file numbers. Key 3 renders 02b and keys 4-12 render
+files 03-11.
 """
 import argparse, csv
 from pathlib import Path
@@ -23,6 +28,7 @@ T_LABEL = "t  (0 = noise, 1 = data)"
 
 
 def read(path):
+    """Load a CSV as {column: numpy array}, converting columns to float wherever every cell is a number or blank (NaN)."""
     with open(path) as f:
         rows = list(csv.DictReader(f))
     # A column is numeric only if every non-blank cell is. Mixed columns, like channel ("all", "0", ...), stay as text.
@@ -35,6 +41,7 @@ def read(path):
 
 
 def _number(text):
+    """True if the string parses as a float."""
     try:
         float(text)
         return True
@@ -43,13 +50,16 @@ def _number(text):
 
 
 def select(table, **conditions):
+    """Rows of a read() table where every given column equals its value, e.g. select(t, w=4, channel="all")."""
     mask = np.ones(len(next(iter(table.values()))), bool)
+    # Text columns compare as strings, numeric columns as floats, so select(t, w=4) and select(t, w="4") both work.
     for key, value in conditions.items():
         mask &= table[key] == (value if isinstance(table[key].flat[0], str) else float(value))
     return {k: v[mask] for k, v in table.items()}
 
 
 def style(ax, ylabel=None, xlabel=None):
+    """House style for a line plot: light background, horizontal grid only, no box, muted labels, x axis fixed to t in [0, 1]."""
     ax.set_facecolor(SURFACE)
     ax.grid(axis="y", color=GRID, linewidth=0.8)
     ax.set_axisbelow(True)
@@ -65,17 +75,20 @@ def style(ax, ylabel=None, xlabel=None):
 
 
 def header(fig, title, subtitle, top):
+    """Left-aligned bold title stating the finding, with a muted subtitle (the method) placed at height `top`."""
     fig.suptitle(title, x=0.06, y=0.985, ha="left", color=INK, fontsize=12.5, fontweight="bold")
     fig.text(0.06, top, subtitle, color=MUTED, fontsize=8.5, va="top")
 
 
 def save(fig, out, name, rect):
+    """Lay out the panels inside `rect` (leaving room for the header), write the PNG and free the figure's memory."""
     fig.tight_layout(rect=rect)
     fig.savefig(out / name, facecolor=SURFACE)
     plt.close(fig)
 
 
 def w_lines(ax, table, y, low=None, high=None, drop_nan=True):
+    """Plot column y against t once per w (blue solid w=4, orange dashed w=1), with an optional low-high band. drop_nan is unused."""
     for w, s in W_STYLE.items():
         d = select(table, w=w)
         ok = np.isfinite(d[y].astype(float))
@@ -85,6 +98,7 @@ def w_lines(ax, table, y, low=None, high=None, drop_nan=True):
 
 
 def fig_magnitude(a, out):
+    """01: ||Delta||, ||Delta|| / ||f_uncond|| and step-to-step cosine of Delta over time, at both w (magnitude_direction.csv)."""
     d = read(a / "magnitude_direction.csv")
     fig, axes = plt.subplots(3, 1, figsize=(8, 8.4), sharex=True, dpi=170, facecolor=SURFACE)
     for ax, key, label in zip(axes, ("norm", "ratio", "cos"),
@@ -99,6 +113,7 @@ def fig_magnitude(a, out):
 
 
 def fig_alignment(a, out, scope, name, title, floor, floor_label, band_note):
+    """02 / 02b: how much seeds share Delta, f_cond and f_uncond (alignment_shared.csv). floor is S for vectors with nothing shared."""
     d = read(a / "alignment_shared.csv")
     fig, axes = plt.subplots(2, 2, figsize=(10, 7), sharex=True, dpi=170, facecolor=SURFACE)
     panels = [(f"pairwise_cos_delta_{scope}", r"Mean pairwise $\cos(\Delta^{(i)}, \Delta^{(j)})$", 0),
@@ -120,7 +135,8 @@ def fig_alignment(a, out, scope, name, title, floor, floor_label, band_note):
 
 
 def heat(ax, values, t, cmap, norm=None, label=""):
-    im = ax.imshow(values, aspect="auto", origin="lower", extent=(t[0], t[-1], -0.5, values.shape[0] - 0.5), cmap=cmap, norm=norm,
+    """Heat map with time on x and block on y, plus a colorbar. values: (24 blocks, T)."""
+    im =ax.imshow(values, aspect="auto", origin="lower", extent=(t[0], t[-1], -0.5, values.shape[0] - 0.5), cmap=cmap, norm=norm,
                    interpolation="nearest")
     ax.tick_params(colors=MUTED, length=0, labelsize=8.5)
     for spine in ax.spines.values():
@@ -142,6 +158,7 @@ def grid(d, key):
 
 
 def fig_rank(a, out):
+    """03: effective rank of the conditional pooled features at w=1, at w=4, and their difference, per block and time."""
     p = select(read(a / "subspace_pooled.csv"), branch="cond")
     t = np.unique(p["t"].astype(float))
     r1, r4 = grid(p, "eff_rank_w1"), grid(p, "eff_rank_w4")
@@ -163,11 +180,13 @@ def fig_rank(a, out):
 
 
 def fig_subspace(a, out):
+    """04: does guidance shrink cross-seed variation (top: variance ratio) or rotate its subspace (bottom: overlap tests)?"""
     p = select(read(a / "subspace_pooled.csv"), branch="cond")
     t = np.unique(p["t"].astype(float))
     fig = plt.figure(figsize=(11, 9.4), dpi=170, facecolor=SURFACE)
     spec = fig.add_gridspec(2, 3, height_ratios=[1.15, 1])
     top_left, top_right = fig.add_subplot(spec[0, :2]), fig.add_subplot(spec[0, 2])
+    # log2 makes halving and doubling equally far from 0, so the diverging color map is symmetric; ticks show the plain ratio.
     ratio = np.log2(grid(p, "total_variance_ratio"))
     limit = np.nanmax(np.abs(ratio))
     im = heat(top_left, ratio, t, DIVERGING, TwoSlopeNorm(0, -limit, limit), "total variance, w=4 / w=1")
@@ -208,6 +227,7 @@ def fig_subspace(a, out):
 
 
 def fig_shrink(a, out):
+    """05: variance at w=4 over w=1 along each of the top 5 w=1 directions (cross-fitted shrink_pc* columns)."""
     p = select(read(a / "subspace_pooled.csv"), branch="cond")
     fig, axes = plt.subplots(1, 3, figsize=(11, 4.1), sharey=True, dpi=170, facecolor=SURFACE)
     colors = [BLUE, ORANGE, AQUA, "#eda100", "#e87ba4"]
@@ -230,6 +250,7 @@ def fig_shrink(a, out):
 
 
 def fig_frequency(a, out):
+    """06: low- vs high-frequency energy in Delta over time, overall and per latent channel (spectrum_energy.csv)."""
     e = read(a / "spectrum_energy.csv")
     all_ch = {k: v for k, v in select(e, channel="all").items()}
     fig = plt.figure(figsize=(11, 8.6), dpi=170, facecolor=SURFACE)
@@ -267,13 +288,14 @@ def fig_frequency(a, out):
 
 
 def fig_spread(a, out):
+    """07: cross-seed spread at w=4 divided by spread at w=1, over time, in four feature spaces (spread_over_time.csv)."""
     d = read(a / "spread_over_time.csv")
     fig, axes = plt.subplots(2, 2, figsize=(10.5, 7.6), sharex=True, dpi=170, facecolor=SURFACE)
     for ax, key, label in zip(axes.ravel(), ("l2_latent", "cos_latent", "dino", "clip"),
                               ("L2 on latent x̂", "cosine distance on latent x̂", "DINOv2 cosine distance", "CLIP cosine distance")):
         s = select(d, metric=key)
         t = s["t"].astype(float)
-        keep = s["step"].astype(int) < 49
+        keep = s["step"].astype(int) < 49  # row 49 is the final sample, not a point in time, so it is left off the time axis
         ax.fill_between(t[keep], s["ratio_class_min"][keep].astype(float), s["ratio_class_max"][keep].astype(float), color=BLUE, alpha=0.14, linewidth=0)
         ax.plot(t[keep], s["ratio_of_means"][keep].astype(float), color=BLUE, lw=2)
         ax.axhline(1, color=MUTED, lw=1, ls=":")
@@ -287,6 +309,7 @@ def fig_spread(a, out):
 
 
 def fig_final(a, out):
+    """08: final-image diversity per class at w=1 and w=4, as a dumbbell plot (final_diversity.csv)."""
     d = read(a / "final_diversity.csv")
     fig, axes = plt.subplots(1, 2, figsize=(10, 4.6), dpi=170, facecolor=SURFACE)
     for ax, key, label in zip(axes, ("dino", "clip"), ("DINOv2", "CLIP")):
@@ -314,7 +337,8 @@ def fig_final(a, out):
 
 
 def fig_scale(a, out):
-    pooled, tokens = read(a / "scale_free_pooled.csv"), read(a / "scale_free_tokens.csv")
+    """09: raw variance against scale-free V, for pooled and token features (scale_free_*.csv from guidance_window.py)."""
+    pooled, tokens =read(a / "scale_free_pooled.csv"), read(a / "scale_free_tokens.csv")
     fig, axes = plt.subplots(2, 3, figsize=(11, 7.2), sharex=True, dpi=170, facecolor=SURFACE)
     blocks = ((4, BLUE, "-"), (12, ORANGE, "--"), (22, AQUA, ":"))
     for layer, color, ls in blocks:
@@ -352,6 +376,7 @@ COND_STYLE = {"w1": dict(color=ORANGE, ls="--", label="w = 1"), "w4": dict(color
 
 
 def fig_window_curves(a, out):
+    """10: S(f_cond), late-block effective rank and pooled V over time for w1, w4 and the two windows (window_curves.csv)."""
     d = read(a / "window_curves.csv")
     fig, axes = plt.subplots(1, 3, figsize=(11.5, 4.3), dpi=170, facecolor=SURFACE)
     for ax, key, label in zip(axes, ("S_f_cond", "eff_rank", "V_pooled"), (r"$S(f_{cond})$", "effective rank, blocks 13–23", "V = 1 − S, pooled, blocks 13–23")):
@@ -366,6 +391,7 @@ def fig_window_curves(a, out):
 
 
 def fig_window_effects(a, out):
+    """11: share of each w=4 effect the early and late windows reproduce, with 95% intervals (window_effects.csv)."""
     d = read(a / "window_effects.csv")
     labels = {"S_f_cond": "S(f_cond), t ≥ 0.3", "S_f_uncond": "S(f_uncond), t ≥ 0.3", "eff_rank_late_blocks": "Effective rank, blocks 13–23",
               "V_pooled_late_blocks": "V pooled, blocks 13–23", "final_dino": "Final diversity, DINOv2", "final_clip": "Final diversity, CLIP",
@@ -407,6 +433,7 @@ def main():
     a = Path(args.run) / "analysis"
     out = a / "figures"
     out.mkdir(exist_ok=True)
+    # Lambdas, so a figure is only built (and its CSV only read) when its key is requested.
     figures = {
         1: lambda: fig_magnitude(a, out),
         2: lambda: fig_alignment(a, out, "class", "02_alignment_within_class.png", "Seeds of one class share a guidance direction only early on",

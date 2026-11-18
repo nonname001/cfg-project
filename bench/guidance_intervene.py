@@ -18,6 +18,15 @@ score, freq and scalar act on the 3 guided channels only; cond and feat change f
 Subspaces are fit on the calibration seeds of a guidance_capture.py run (--build-tables); evaluate on other seeds.
 usage: guidance_intervene.py --build-tables --calibration <run> --tables <file>
        guidance_intervene.py --tables <file> --weights <file> --out <dir> --seeds 16 17 ... [--conditions w1 w4 ...]
+
+Why "excess guidance": plain CFG gives f_guided = f_uncond + w*Delta = f_cond + (w-1)*Delta. The f_cond part is what w = 1 would
+use, so (w-1)*Delta is everything guidance adds on top. Each method removes a fraction lambda of that excess along one component,
+so lambda = 0 is plain w = 4 and lambda = 1 makes the targeted component behave as at w = 1.
+
+Where each method acts, from the outside of the network inward:
+  scalar, score, freq, wrongclass   after the network, on the velocity it returned (score space)
+  cond                              before the blocks, on the class embedding that conditions every block (condition space)
+  feat                              inside the network, on the outputs of blocks 13-23 (feature space)
 """
 import argparse, hashlib, json, sys, time
 from pathlib import Path
@@ -29,11 +38,11 @@ sys.path.insert(0, "bench")
 from guidance_delta import GUIDED_CHANNELS, LABELS, NULL_CLASS, array_sha256, initial_noise, load_model, sha256
 from transport import Sampler, create_transport
 
-W = 4.0
-EARLY_END = 0.3
-RANK = 3
-LOW_CUTOFF = 4
-FEATURE_BLOCKS = list(range(13, 24))
+W = 4.0  # guidance scale every intervention starts from
+EARLY_END = 0.3  # interventions act only while s_t < 0.3, the early phase where the windowed-guidance runs showed layout is set
+RANK = 3  # dimensions of each class's shared subspace
+LOW_CUTOFF = 4  # low-pass radius for freq, in cycles per 32-pixel latent (Nyquist is 16)
+FEATURE_BLOCKS = list(range(13, 24))  # the later blocks, where w = 4 lowered effective rank in the 16-seed run
 CONDITIONS = ["w1", "w4", "scalar_0.5", "scalar_1", "score_0.5", "score_1", "freq_0.5", "freq_1", "cond_0.5", "cond_1",
               "feat_0.5", "feat_1", "wrongclass_1"]
 
@@ -49,28 +58,38 @@ def build_tables(run, path, seeds=range(16)):
     for w in ("w1", "w4"):
         files = [np.load(run / w / f"seed_{s}" / "trajectory.npz") for s in seeds]
         s_t = files[0]["s_t"]
-        early = s_t < EARLY_END
+        early = s_t < EARLY_END  # boolean mask over steps: True for the steps inside the intervention window
+        # (seeds, early steps, 8 classes, 3 guided channels, 32, 32). float64 for the averaging and SVD below.
         delta = np.stack([f["delta"][early][:, :, :GUIDED_CHANNELS] for f in files], 0).astype(np.float64)
         latents.append(delta.mean(0).reshape(early.sum(), 8, -1))  # (steps, classes, 3072)
+        # Features: the class signal inside the network, pooled conditional minus pooled unconditional activation per block.
         pooled = [np.load(run / w / f"seed_{s}" / "pooled.npy", mmap_mode="r") for s in seeds]
         diff = np.mean([np.asarray(p[early][:, FEATURE_BLOCKS, 0] - p[early][:, FEATURE_BLOCKS, 1], dtype=np.float64) for p in pooled], 0)
         features.append(diff)  # (steps, blocks, classes, 1024)
+    # Stack the w=1 and w=4 steps as rows, so each class gets one (2 * early steps, D) matrix of mean directions.
     latents, features = np.concatenate(latents, 0), np.concatenate(features, 0)
+    # The top RANK right singular vectors span the directions those mean vectors mostly lie in. They are orthonormal rows, so the
+    # projection of any vector v onto their span is basis.T @ (basis @ v). The matrix is not centered on purpose: the mean
+    # direction itself is the shared push to capture, not variation around it.
     top = lambda x: np.linalg.svd(x, full_matrices=False)[2][:RANK]
     latent_basis = np.stack([top(latents[:, c]) for c in range(8)]).astype(np.float32)  # (8, 3, 3072), orthonormal rows
-    feature_basis = np.stack([np.stack([top(features[:, b, c]) for c in range(8)]) for b in range(len(FEATURE_BLOCKS))]).astype(np.float32)
+    feature_basis = np.stack([np.stack([top(features[:, b, c]) for c in range(8)]) for b in range(len(FEATURE_BLOCKS))]).astype(np.float32)  # (11 blocks, 8, 3, 1024)
     np.savez(path, latent_basis=latent_basis, feature_basis=feature_basis, seeds=np.array(list(seeds)), early_end=EARLY_END, rank=RANK)
 
 
 def low_pass_matrix():
     """Real 1024 x 1024 matrix for the radial low-pass filter, so it can run as one matmul on any device."""
-    f = np.fft.fftfreq(32, 1 / 32)
-    mask = np.hypot(*np.meshgrid(f, f, indexing="ij")) <= LOW_CUTOFF
+    f = np.fft.fftfreq(32, 1 / 32)  # integer frequencies -16..15, in cycles per 32-pixel image
+    mask = np.hypot(*np.meshgrid(f, f, indexing="ij")) <= LOW_CUTOFF  # keep frequencies within radius LOW_CUTOFF of zero
+    # Filter each of the 1024 one-pixel images. Row i is then the filter's response to pixel i, and since the filter is linear,
+    # filtering any image x equals x_flat @ M. The mask is symmetric, so the response is real (.real drops rounding-level imaginary
+    # parts) and M is symmetric, which is why callers can use M.T and M interchangeably.
     eye = np.eye(1024).reshape(1024, 32, 32)
     return np.fft.ifft2(np.fft.fft2(eye) * mask).real.reshape(1024, 1024).astype(np.float32)
 
 
 def parse(condition):
+    """'score_0.5' -> ('score', 0.5). The baselines 'w1' and 'w4' have no strength, so they return 0."""
     if condition in ("w1", "w4"):
         return condition, 0.0
     method, strength = condition.split("_")
@@ -82,10 +101,16 @@ class Intervention:
 
     The arithmetic matches run_condition exactly, so a single-part spec reproduces its samples bit for bit. In a mix, cond changes
     the embedding first, so score projects the Delta that the damped embedding produced.
+
+    guidance_capture.py calls these methods in this order:
+      install(model)    once before sampling: registers the embedding hook if the spec includes cond
+      set_time(t)       at each step before the model runs, so hooks know whether the step is inside the early window
+      adjust(out, last) at each step after forward_with_cfg, to apply the score part to the guided velocity
+      remove()          once after sampling: unregisters the hooks
     """
 
     def __init__(self, spec, tables, n):
-        self.parts = dict(parse(part) for part in spec.split("+"))
+        self.parts = dict(parse(part) for part in spec.split("+"))  # e.g. {"score": 1.0, "cond": 0.5}
         assert set(self.parts) <= {"score", "cond"}, f"unsupported intervention: {spec}"
         self.tables, self.n, self.active, self.handles = tables, n, False, []
 
@@ -94,12 +119,15 @@ class Intervention:
 
     def install(self, model):
         if "cond" in self.parts:
-            alpha = 1 - self.parts["cond"] * (W - 1) / W
+            alpha = 1 - self.parts["cond"] * (W - 1) / W  # at strength 1: 1 - 3/4 = 1/4 = 1/W
             n = self.n
 
             def embed_hook(_module, _inputs, emb):
+                # emb is the label embedding for the whole doubled batch: rows [:n] real classes, rows [n:] the null class.
                 if not self.active:
-                    return None
+                    return None  # outside the window: leave the embedding unchanged
+                # Move each class embedding a fraction alpha of the way from the null embedding. SiT adds this to the time
+                # embedding and every block reads the sum, so the class signal is weakened everywhere in the network at once.
                 return torch.cat([emb[n:] + alpha * (emb[:n] - emb[n:]), emb[n:]], 0)
             self.handles.append(model.y_embedder.register_forward_hook(embed_hook))
 
@@ -113,16 +141,20 @@ class Intervention:
         if not (self.active and "score" in self.parts):
             return out, 0.0
         n = self.n
-        delta = (last[:n, :GUIDED_CHANNELS] - last[n:, :GUIDED_CHANNELS]).float()
-        basis = self.tables["latent"]
+        delta = (last[:n, :GUIDED_CHANNELS] - last[n:, :GUIDED_CHANNELS]).float()  # (n, 3, 32, 32)
+        basis = self.tables["latent"]  # (n classes, 3, 3072): sample i uses its own class's basis
         flat = delta.reshape(n, -1)
+        # Projection P Delta = basis.T @ (basis @ Delta), done per sample: first the 3 coordinates (n, 3), then back to (n, 3072).
         part = torch.einsum("nk,nkd->nd", torch.einsum("nkd,nd->nk", basis, flat), basis).reshape(delta.shape)
-        out = out.clone()
+        out = out.clone()  # do not edit forward_with_cfg's tensor in place
+        # out is f_cond + (W-1) Delta on the guided channels; removing (W-1) * L * P Delta leaves f_cond + (W-1)(Delta - L P Delta).
         out[:n, :GUIDED_CHANNELS] -= (W - 1) * self.parts["score"] * part
+        # Share of Delta's energy lying in the subspace, summed over the whole batch (logged as `removed`).
         return out, float((part ** 2).sum() / (delta ** 2).sum())
 
 
 def load_tables(path, device):
+    """Load build_tables output onto the device, plus the low-pass matrix. Returns (tables, calibration seeds)."""
     saved = np.load(path)
     return dict(latent=torch.from_numpy(saved["latent_basis"]).to(device), feature=torch.from_numpy(saved["feature_basis"]).to(device),
                 low_pass=torch.from_numpy(low_pass_matrix()).to(device)), saved["seeds"].tolist()
@@ -135,23 +167,29 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
     z = initial_noise(seed)
     x = torch.cat([z, z], 0).to(device)
     y = torch.tensor(LABELS + [NULL_CLASS] * n, device=device)
+    # State shared between the sampler wrapper and the hooks: whether this step is in the window, and the raw branch outputs.
     state = dict(active=False, last=None)
     removed = []
-    excess = (W - 1) / W
+    excess = (W - 1) / W  # the share of the class signal that cond and feat remove at strength 1
 
     basis = None
     if method in ("score", "wrongclass"):
+        # wrongclass: roll(-1) shifts the class axis, so sample i gets class i+1's subspace (wrapping around). Same rank and
+        # same kind of direction, but the wrong class. If this damps as well as score, class-specific directions do not matter.
         basis = tables["latent"] if method == "score" else tables["latent"].roll(-1, 0)
 
     forward = model.forward
 
     def recording_forward(xb, tb, yb):
+        # Only keeps the raw branch outputs, so the score-space methods can rebuild Delta after forward_with_cfg mixes them.
         state["last"] = forward(xb, tb, yb)
         return state["last"]
 
     def guided(xb, tb, **kwargs):
+        # The function the sampler integrates. It sets the window flag first, because the hooks inside the forward pass read it.
         state["active"] = float(tb[0]) < EARLY_END
         if method == "w1" or (method == "scalar" and state["active"]):
+            # w1: no guidance at any step. scalar: a smaller w during the window, the same in every direction.
             kwargs["cfg_scale"] = 1.0 if method == "w1" else 1 + (W - 1) * (1 - strength)
         out = model.forward_with_cfg(xb, tb, **kwargs)
         fraction = 0.0
@@ -159,8 +197,10 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
             last = state["last"]
             delta = (last[:n, :GUIDED_CHANNELS] - last[n:, :GUIDED_CHANNELS]).float()
             if method == "freq":
+                # Low-pass each channel's 32 x 32 map with one matmul: (n, 3, 1024) @ (1024, 1024).
                 part = (delta.reshape(n, GUIDED_CHANNELS, 1024) @ tables["low_pass"].T).reshape(delta.shape)
             else:
+                # Projection onto the per-class subspace, as in Intervention.adjust.
                 flat = delta.reshape(n, -1)
                 part = torch.einsum("nk,nkd->nd", torch.einsum("nkd,nd->nk", basis, flat), basis).reshape(delta.shape)
             out = out.clone()
@@ -170,21 +210,25 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
         return out
 
     def embed_hook(_module, _inputs, emb):  # rows [:n] are class embeddings, rows [n:] the null embedding
+        # cond: same arithmetic as Intervention.install, so the two code paths give bit-identical samples.
         if not state["active"]:
             return None
         alpha = 1 - strength * excess
         return torch.cat([emb[n:] + alpha * (emb[:n] - emb[n:]), emb[n:]], 0)
 
     def block_hook(index):
+        # feat: index is the position in FEATURE_BLOCKS (0-10), which is how feature_basis is indexed, not the block number.
         def hook(_module, _inputs, out):
             if not state["active"]:
                 return None
             u = tables["feature"][index]  # (8, 3, 1024)
+            # The block's class signal: pooled conditional minus pooled unconditional output, one 1024-d vector per class.
             diff = out[:n].mean(1) - out[n:].mean(1)
-            part = torch.einsum("nk,nkd->nd", torch.einsum("nkd,nd->nk", u, diff), u)
+            part = torch.einsum("nk,nkd->nd", torch.einsum("nkd,nd->nk", u, diff), u)  # its projection onto the class's subspace
             return torch.cat([out[:n] - excess * strength * part[:, None, :], out[n:]], 0)  # same shift on every token
         return hook
 
+    # Register only the hooks the chosen method needs; the score-space methods need none.
     handles = []
     if method == "cond":
         handles.append(model.y_embedder.register_forward_hook(embed_hook))
@@ -203,6 +247,7 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
 
 
 def main():
+    """Either fit the tables (--build-tables), or sample every (seed, condition) pair that is not already saved."""
     p = argparse.ArgumentParser()
     p.add_argument("--build-tables", action="store_true")
     p.add_argument("--calibration")
@@ -222,6 +267,8 @@ def main():
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     saved = np.load(a.tables)
+    # Evaluation seeds must differ from the seeds the tables were fit on. The one exception is a folder named "calibration",
+    # which reruns calibration seeds on purpose to check that this script reproduces the capture run bit for bit.
     assert not set(a.seeds) & set(saved["seeds"].tolist()) or "calibration" in out.name, "evaluation seeds overlap the calibration seeds"
     tables = dict(latent=torch.from_numpy(saved["latent_basis"]).to(a.device), feature=torch.from_numpy(saved["feature_basis"]).to(a.device),
                   low_pass=torch.from_numpy(low_pass_matrix()).to(a.device))
@@ -230,7 +277,7 @@ def main():
                     branch_evaluations=2 * (a.steps - 1), sampler="euler", guided_channels=GUIDED_CHANNELS, classes=LABELS, device=a.device,
                     calibration_seeds=saved["seeds"].tolist())
     path = out / "manifest.json"
-    if path.exists():
+    if path.exists():  # resuming: settings must match the samples already saved
         assert json.loads(path.read_text()) == manifest, "settings differ from the existing manifest in --out"
     else:
         path.write_text(json.dumps(manifest, indent=2))
@@ -241,7 +288,7 @@ def main():
     for seed in a.seeds:  # seeds are the outer loop, so stopping early leaves every condition on the same seeds
         for condition in a.conditions:
             target = out / condition / f"seed_{seed}.npz"
-            if target.exists():
+            if target.exists():  # finished in an earlier invocation
                 continue
             target.parent.mkdir(exist_ok=True)
             start = time.perf_counter()

@@ -1,11 +1,16 @@
 #!/bin/bash
 # Second pass: MLX memory/timing with load buffers freed, repeated full-length XL/2, reference runs.
-W=$1; PY=.venv/bin/python; R=bench/results_pass2.jsonl; : > $R
+# usage: bench/rerun.sh <workdir for weights and noise>     (from the project root; part of the older speed benchmark)
+# Steps: (1) every size except XL/2 on MLX, plain and compiled; (2) XL/2 twice on MLX and on MPS, with thermal readings between
+# runs; (3) a check that SiT's default adaptive solver (dopri5) runs on MPS; (4) SiT's own unmodified sample.py on CPU.
+W=$1; PY=.venv/bin/python; R=bench/results_pass2.jsonl; : > $R   # ': > $R' empties the results file
+# therm: log macOS thermal state, to tell whether the CPU/GPU was being throttled during a timing run.
 therm() { echo "THERM $1 $(pmset -g therm | grep -i -E 'speed_limit|thermal warning|performance warning' | tr '\n' ' ')" | tee -a bench/therm.log; }
 for s in S B L XL; do for p in 8 4 2; do
   m=SiT-$s/$p; t=SiT-${s}_$p
-  [ -f $W/$t.safetensors ] || $PY bench/prep.py $m $W/$t 0 >/dev/null 2>&1
-  [ "$m" = SiT-XL/2 ] && continue
+  [ -f $W/$t.safetensors ] || $PY bench/prep.py $m $W/$t 0 >/dev/null 2>&1   # write weights and noise if missing
+  [ "$m" = SiT-XL/2 ] && continue   # XL/2 gets its own repeated runs below
+  # grep RESULT | cut -c8- keeps only the JSON after the "RESULT " prefix; sleep lets the machine cool between runs.
   for c in "" compile; do $PY bench/worker.py mlx $m $W/$t $W/$t.p2.npy 50 $c 2>/dev/null | grep RESULT | cut -c8- | tee -a $R; sleep 10; done
   rm -f $W/$t.safetensors
 done; done
@@ -17,6 +22,7 @@ for round in 1 2; do
 done
 rm -f $W/$t.safetensors
 echo "=== dopri5 on MPS"
+# Inline Python: one CFG sampling call with SiT's adaptive dopri5 solver on a small model, only to confirm it runs on MPS.
 $PY - <<'PY' 2>&1 | grep -v -i warn | tail -2 | cut -c1-200
 import sys; sys.path.insert(0,'sit')
 import torch
@@ -29,6 +35,7 @@ z=torch.randn(2,4,32,32,device='mps'); y=torch.tensor([1,1000],device='mps')
 print('dopri5 mps ok', fn(z,m.forward_with_cfg,y=y,cfg_scale=4.0)[-1].shape)
 PY
 echo "=== unmodified sample.py (CPU), euler 50"
+# /usr/bin/time -l reports peak memory; the grep keeps the timing, memory and any error lines.
 /usr/bin/time -l $PY sit/sample.py ODE --sampling-method euler --num-sampling-steps 50 --seed 0 2>&1 | grep -E "Sampling took|real|peak memory footprint|maximum resident|Error" 
 mv sample.png outputs/SiT-XL_2_unmodified_sample_py_cpu.png
 therm end

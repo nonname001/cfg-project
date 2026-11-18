@@ -1,6 +1,14 @@
 """Figures and a summary table for guidance_mech.py output. Writes <run>/analysis/figures/ and mech_summary.csv.
 
 usage: guidance_mech_figures.py --run <dir>
+
+Figures:
+  m1   dose response: how each metric moves as damping strength lambda grows, score family vs condition family
+  m2   direct vs through-x_t change in the class signal per block, from mech_patch.csv
+  m3   block x time maps of spread V and class-signal sharing S, relative to w = 4
+  m3b  block x time map of effective rank, relative to w = 4
+  m4   per-step guidance statistics for every condition
+Colors: blue shades = score damping, orange shades = condition damping, green = the mixes; darker = stronger.
 """
 import argparse, csv
 from pathlib import Path
@@ -18,6 +26,7 @@ from guidance_analysis import write_csv
 from guidance_figures import DIVERGING, GRID, INK, MUTED, SURFACE, header, read, save, select, style
 
 LATE_BLOCKS = list(range(13, 24))
+# Each family starts at w4 (strength 0), so its dose-response line begins at the undamped point.
 SCORE = ["w4", "score_0.5", "score_1", "score_2"]
 COND = ["w4", "cond_0.25", "cond_0.5", "cond_1"]
 MIX = ["score_1+cond_0.25", "score_1+cond_0.5"]
@@ -30,12 +39,13 @@ COLORS = {"w1": INK, "w4": MUTED, **BLUES, **ORANGES, **MIXC}
 
 
 def summary(a):
-    curves, blocks = read(a / "mech_curves.csv"), read(a / "mech_blocks.csv")
+    """One row per condition: per-step and per-block metrics averaged over the relevant window, plus final diversity and fidelity."""
+    curves, blocks =read(a / "mech_curves.csv"), read(a / "mech_blocks.csv")
     finals = {r["condition"]: r for r in csv.DictReader(open(a / "finals" / "intervention_results.csv"))}
     rows = []
     for c in finals:
         cv, bl = select(curves, condition=c), select(blocks, condition=c)
-        late, early = cv["t"] >= 0.3, cv["t"] < 0.3
+        late, early = cv["t"] >= 0.3, cv["t"] < 0.3  # after and during the intervention window
         lb = np.isin(bl["block"], LATE_BLOCKS) & (bl["t"] >= 0.3)
         f = finals[c]
         rows.append(dict(condition=c, S_f_cond_late=cv["S_f_cond"][late].mean(), S_delta_early=cv["S_delta"][early].mean(),
@@ -48,7 +58,8 @@ def summary(a):
 
 
 def fig_dose(s, out):
-    keys = [("S_f_cond_late", "S(f_cond), t ≥ 0.3"), ("late_block_eff_rank", "effective rank, blocks 13–23, t ≥ 0.3"),
+    """m1: six summary metrics against damping strength; mixes are single points at lambda = 1, w = 1 a dotted reference line."""
+    keys =[("S_f_cond_late", "S(f_cond), t ≥ 0.3"), ("late_block_eff_rank", "effective rank, blocks 13–23, t ≥ 0.3"),
             ("late_block_signal_S", "class signal shared across seeds (S), blocks 13–23"), ("V_low", "final layout diversity (low-band V)"),
             ("dino", "final DINOv2 diversity"), ("p_target", "fidelity: classifier p(target)")]
     fig, axes = plt.subplots(2, 3, figsize=(12, 7.2), dpi=170, facecolor=SURFACE)
@@ -69,8 +80,9 @@ def fig_dose(s, out):
 
 
 def fig_decomposition(a, out):
+    """m2: per block, how much of each intervention's change to the class signal is direct and how much comes through x_t."""
     p = read(a / "mech_patch.csv")
-    act = {k: v[p["site"] != "delta"] for k, v in p.items()}
+    act = {k: v[p["site"] != "delta"] for k, v in p.items()}  # block rows only; the Delta rows are not plotted here
     conditions = ["score_1", "cond_0.5", "score_1+cond_0.5"]
     fig, axes = plt.subplots(2, 3, figsize=(12, 6.6), sharey="row", dpi=170, facecolor=SURFACE)
     for col, c in enumerate(conditions):
@@ -101,6 +113,7 @@ def block_maps(a, out, rows, title, subtitle, name):
     b = read(a / "mech_blocks.csv")
     ref = select(b, condition="w4")
     t = np.unique(ref["t"])
+    # (24 blocks, T) array of column k, looked up one (block, step) cell at a time.
     grid = lambda d, k: np.array([[d[k][(d["block"] == blk) & (d["step"] == s)][0] for s in range(len(t))] for blk in range(24)])
     conditions = ["score_1", "cond_0.5", "score_1+cond_0.5"]
     single = len(rows) == 1
@@ -109,7 +122,7 @@ def block_maps(a, out, rows, title, subtitle, name):
     for row, (k, label, compare) in enumerate(rows):
         base = grid(ref, k)
         maps = [compare(grid(select(b, condition=c), k), base) for c in conditions]
-        limit = max(np.nanmax(np.abs(m)) for m in maps)
+        limit = max(np.nanmax(np.abs(m)) for m in maps)  # one symmetric color scale per row, so the three conditions compare directly
         for col, (c, m) in enumerate(zip(conditions, maps)):
             ax = axes[row, col]
             im = ax.imshow(m, aspect="auto", origin="lower", extent=(t[0], t[-1], -0.5, 23.5), cmap=DIVERGING,  # blue = higher than w=4, red = lower, in every row
@@ -131,23 +144,28 @@ def block_maps(a, out, rows, title, subtitle, name):
     plt.close(fig)
 
 
+# How a condition's map is compared with w=4's: a log2 ratio for V (a spread, where halving and doubling should look alike),
+# a plain difference for quantities that already live on a fixed scale (S in [0, 1], effective rank in [1, 15]).
 LOG_RATIO = lambda m, base: np.log2(m / base)
 DIFF = lambda m, base: m - base
 
 
 def fig_blocks(a, out):
+    """m3: cross-seed spread V (top row) and class-signal sharing S (bottom row), relative to w=4."""
     block_maps(a, out, (("V", "scale-free spread V, log2 vs w=4", LOG_RATIO), ("signal_S", "class-signal S, minus w=4", DIFF)), BLOCKS_TITLE,
                "Pooled conditional features, 16 seeds per class. Blue = higher than w=4, red = lower. Top: cross-seed spread. Bottom: how much of the class signal seeds share.",
                "m3_block_maps.png")
 
 
 def fig_block_rank(a, out):
+    """m3b: effective rank of the 16 seeds per class, minus w=4's, by block and time."""
     block_maps(a, out, (("eff_rank", "effective rank, minus w=4", DIFF),), RANK_TITLE,
                "Pooled conditional features. Effective rank of the 16 seeds per class (max 15), averaged over 8 classes. Blue = higher than w=4, red = lower.",
                "m3b_block_rank.png")
 
 
 def fig_curves(a, out):
+    """m4: four guidance statistics over time; top row the score family, bottom row the condition family and mixes."""
     cv = read(a / "mech_curves.csv")
     keys = (("S_f_cond", "S(f_cond)"), ("S_delta", "S(Δ)"), ("ratio", "‖Δ‖ / ‖f_uncond‖"), ("V_x_hat", "cross-seed V of x̂"))
     fig, axes = plt.subplots(2, 4, figsize=(14, 6.6), sharex=True, dpi=170, facecolor=SURFACE)
@@ -165,6 +183,7 @@ def fig_curves(a, out):
     save(fig, out, "m4_curves.png", (0, 0, 1, 0.93))
 
 
+# Default figure titles. --titles replaces the first four, so finding-style titles can be set after looking at the results.
 DOSE_TITLE = "Dose response of score and condition damping"
 DECOMP_TITLE = "Where each intervention changes the class signal inside the network"
 BLOCKS_TITLE = "Internal changes relative to w = 4, by block and time"
@@ -180,7 +199,7 @@ def main():
     analysis = Path(a.run) / "analysis"
     out = analysis / "figures"
     out.mkdir(exist_ok=True)
-    global DOSE_TITLE, DECOMP_TITLE, BLOCKS_TITLE, CURVES_TITLE
+    global DOSE_TITLE, DECOMP_TITLE, BLOCKS_TITLE, CURVES_TITLE  # the fig_* functions read these module-level names
     if a.titles:
         DOSE_TITLE, DECOMP_TITLE, BLOCKS_TITLE, CURVES_TITLE = a.titles
     s = summary(analysis)

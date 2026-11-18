@@ -23,13 +23,17 @@ sys.path.insert(0, "sit")
 from models import SiT_models
 from transport import Sampler, create_transport
 
-LABELS = [207, 360, 387, 974, 88, 979, 417, 279]  # sample.py's default class_labels
+# Shared constants. Every other guidance_* script imports these, so all experiments use the same 8 classes in the same order.
+LABELS = [207, 360, 387, 974, 88, 979, 417, 279]  # sample.py's default class_labels (ImageNet-1k indices)
 LABEL_NAMES = ["golden retriever", "otter", "lesser panda", "geyser", "macaw", "valley", "balloon", "arctic fox"]
+# SiT was trained with 1000 real classes plus one extra embedding row, index 1000, that stands for "no class". Feeding it gives the
+# unconditional prediction f_uncond, which is what classifier-free guidance compares against.
 NULL_CLASS = 1000
-GUIDED_CHANNELS = 3  # forward_with_cfg guides model_out[:, :3] only
+GUIDED_CHANNELS = 3  # forward_with_cfg guides model_out[:, :3] only; latent channel 3 always takes the conditional output
 
 
 def sha256(path):
+    """SHA-256 of a file, read in 16 MB chunks so multi-GB checkpoints never sit in memory at once. Recorded in manifests."""
     h = hashlib.sha256()
     with open(path, "rb") as f:
         while chunk := f.read(1 << 24):
@@ -38,10 +42,13 @@ def sha256(path):
 
 
 def array_sha256(a):
+    """SHA-256 of an array's raw bytes. Two runs with equal hashes produced bit-identical arrays (same dtype, shape and values)."""
+    # ascontiguousarray: tobytes() of a strided view would otherwise depend on memory layout rather than only on the values.
     return hashlib.sha256(np.ascontiguousarray(a).tobytes()).hexdigest()
 
 
 def load_model(name, weights, device):
+    """Build the SiT architecture `name` (e.g. "SiT-L/2"), load `weights` into it, and return it on `device` in eval mode."""
     # input_size is in latent pixels: 256px images / 8 (VAE downsampling) = 32. learn_sigma=True matches the 256x256
     # checkpoints, which have 8 output channels; SiT.forward() drops the 4 sigma channels before returning.
     model = SiT_models[name](input_size=32, num_classes=1000, learn_sigma=True)
@@ -112,6 +119,7 @@ def metrics(delta):
 
 
 def main():
+    """Sample every seed at one guidance scale, save its per-step log, then write the manifest."""
     p = argparse.ArgumentParser()
     p.add_argument("--model", default="SiT-L/2", choices=list(SiT_models))
     p.add_argument("--weights", required=True)
@@ -123,6 +131,7 @@ def main():
     p.add_argument("--device", default="mps")
     a = p.parse_args()
 
+    # Sampling only, never training: turning autograd off saves the memory it would spend keeping activations for a backward pass.
     torch.set_grad_enabled(False)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -140,7 +149,9 @@ def main():
         z, final, log = run_seed(model, sample_fn, seed, a.cfg, a.device)
         # One call per interval is what makes step k and time t[k] line up. An extra call would silently misalign every metric.
         assert len(log["t"]) == a.steps - 1, f"expected {a.steps - 1} model calls, got {len(log['t'])}"
+        # Stacking the per-call lists gives arrays with axes (step, class, channel, 32, 32).
         cond, uncond = torch.stack(log["cond"]).numpy(), torch.stack(log["uncond"]).numpy()
+        # Delta, the guidance vector: what the model does with the class label minus what it does without it.
         delta = cond - uncond
         norm, cos = metrics(delta)
         # forward_with_cfg applies guidance to 3 of the 4 channels, so also measure the part of Delta the sampler really uses.
@@ -157,9 +168,11 @@ def main():
         print(f"seed {seed}: {seconds:.1f}s mean|delta|={norm.mean():.3f} mean cos={cos.mean():.4f}", flush=True)
 
     # Written only after every seed finishes, so a crashed run leaves .npz files with no manifest.
+    # The manifest is the run's reproducibility record: the exact command, the weights' hash, every sampler setting, the sit/ commit
+    # (and whether it had local edits), and package versions. Verification scripts read their settings back from here.
     commit = subprocess.run(["git", "-C", "sit", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
     dirty = subprocess.run(["git", "-C", "sit", "status", "--porcelain"], capture_output=True, text=True).stdout.strip()
-    packages = "torch torchvision torchdiffeq diffusers timm numpy safetensors".split()
+    packages ="torch torchvision torchdiffeq diffusers timm numpy safetensors".split()
     manifest = dict(
         command=" ".join(sys.argv), model=a.model, weights=a.weights, weights_sha256=sha256(a.weights), weights_source=a.weights_source,
         seeds=a.seeds, seed_use="torch.Generator().manual_seed(seed) on CPU; torch.randn(8, 4, 32, 32)",

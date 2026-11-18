@@ -9,6 +9,9 @@ retention = (P - P_w1) / (P_w4 - P_w1): how much of the fidelity gained at w=4 i
 Intervals resample seeds, identically across conditions.
 
 usage: guidance_intervene_eval.py --run <dir> [--embed] [--stats] [--figures [--sheet-seed n]]
+
+An ideal intervention has recovery = 1 (as diverse as w = 1) and retention = 1 (as recognizable as w = 4). Plain scalar damping
+trades one for the other, so the question is whether a targeted method does better than the scalar control at the same strength.
 """
 import argparse, csv, json, sys
 from pathlib import Path
@@ -21,11 +24,13 @@ from guidance_analysis import pairwise_distances, write_csv
 from guidance_delta import LABELS
 from guidance_window import band_split, spread_v
 
-CLASSIFIER = "vit_base_patch16_224.augreg2_in21k_ft_in1k"
+CLASSIFIER = "vit_base_patch16_224.augreg2_in21k_ft_in1k"  # a timm ViT-B/16 ImageNet-1k classifier, independent of SiT
 N_BOOT = 1000
 
 
 def embed(run, device="mps"):
+    """Decode every final latent to an image, save a sample grid, and store DINOv2/CLIP embeddings and classifier scores."""
+    # Imported here so --stats and --figures run without these heavy packages loaded.
     import timm
     import torch.nn.functional as F
     from diffusers.models import AutoencoderKL
@@ -38,15 +43,17 @@ def embed(run, device="mps"):
     classifier = encoder(CLASSIFIER, device)
     labels = torch.tensor(LABELS, device=device)
     for path in sorted(run.glob("*/seed_*.npz")):
-        if path.name.endswith(".tmp.npz"):
+        if path.name.endswith(".tmp.npz"):  # an unfinished write from a stopped run
             continue
         target = run / "embeddings" / path.parent.name / path.name
         if target.exists():
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
         z = torch.from_numpy(np.load(path)["final"]).to(device)
+        # SiT's latents are the VAE's latents times 0.18215, so divide before decoding. The VAE outputs [-1, 1]; map to [0, 1].
         image = ((vae.decode(z / LATENT_SCALE).sample + 1) / 2).clamp(0, 1)
-        small = F.interpolate(image, size=SIZE, mode="bicubic", antialias=True).clamp(0, 1)
+        small = F.interpolate(image, size=SIZE, mode="bicubic", antialias=True).clamp(0, 1)  # 256 -> 224, the encoders' input size
+        # enc is (model, mean, std) from guidance_embed.encoder: normalize the way that model was trained, then run it.
         run_enc = lambda enc: enc[0]((small - enc[1]) / enc[2]).float()
         logits = run_enc(classifier)
         prob = logits.softmax(-1)
@@ -54,6 +61,7 @@ def embed(run, device="mps"):
         (run / "samples").mkdir(exist_ok=True)
         save_image(image.cpu(), run / "samples" / f"{path.parent.name}_{path.stem}.png", nrow=4)
         tmp = target.with_suffix(".tmp.npz")
+        # p_target: the classifier's probability for each sample's intended class (prob[i, LABELS[i]]). top1: whether it is the argmax.
         np.savez(tmp, dino=run_enc(dino).cpu().numpy(), clip=run_enc(clip).cpu().numpy(), p_target=prob[rows, labels].cpu().numpy(),
                  top1=(logits.argmax(-1) == labels).cpu().numpy())
         tmp.rename(target)
@@ -61,6 +69,7 @@ def embed(run, device="mps"):
 
 
 def load(run):
+    """Load every condition, keeping only seeds finished in all of them, so every comparison uses the same seeds."""
     data = {}
     for folder in sorted(run.iterdir()):
         if not folder.is_dir() or folder.name in ("embeddings", "samples"):
@@ -71,6 +80,7 @@ def load(run):
     out = {}
     for condition in data:
         emb = [np.load(run / "embeddings" / condition / f"seed_{s}.npz") for s in shared]
+        # Seeds on axis 0, classes on axis 1.
         out[condition] = dict(final=np.stack([np.load(run / condition / f"seed_{s}.npz")["final"] for s in shared], 0).astype(np.float64),
                               removed=np.stack([np.load(run / condition / f"seed_{s}.npz")["removed"] for s in shared], 0),
                               seconds=np.array([float(np.load(run / condition / f"seed_{s}.npz")["seconds"]) for s in shared]),
@@ -80,7 +90,9 @@ def load(run):
 
 
 def metrics(d, idx):
+    """Diversity and fidelity of one condition on the seeds idx (positions into the shared seed list)."""
     low, high = band_split(d["final"][idx])
+    # V_low: spread of the coarse (layout) part of the final latents. dino, clip: semantic spread. p_target, top1: fidelity.
     return dict(V_low=float(spread_v(np.moveaxis(low, 0, 1)).mean()),
                 dino=float(np.mean([pairwise_distances(d["dino"][idx, c], "cos") for c in range(8)])),
                 clip=float(np.mean([pairwise_distances(d["clip"][idx, c], "cos") for c in range(8)])),
@@ -88,19 +100,23 @@ def metrics(d, idx):
 
 
 def stats(run):
+    """Write intervention_results.csv (every metric, recovery, retention, with 95% intervals) and the paired tests vs scalar."""
     data, seeds = load(run)
     every = np.arange(len(seeds))
     point = {c: metrics(d, every) for c, d in data.items()}
     rng = np.random.default_rng(0)
     boots = []
     for _ in range(N_BOOT):
+        # Same resampled seeds for every condition (paired), each drawn seed kept once (no zero-distance self-pairs).
         idx = np.unique(rng.choice(len(seeds), len(seeds)))
         boots.append({c: metrics(d, idx) for c, d in data.items()})
     rows = []
     for c, m in point.items():
+        # removed_early averages the first 15 steps, which are exactly the steps with s_t = k/49 < 0.3.
         row = dict(condition=c, n_seeds=len(seeds), mean_seconds=float(np.median(data[c]["seconds"])), removed_step0=float(data[c]["removed"][:, 0].mean()),
                    removed_early=float(data[c]["removed"][:, :15].mean()), **m)
         for key in ("V_low", "dino", "clip"):
+            # recovery is computed inside each resample too, so its interval includes the noise in the w1 and w4 baselines.
             f = lambda b: (b[c][key] - b["w4"][key]) / (b["w1"][key] - b["w4"][key])
             row[f"recovery_{key}"] = f(point)
             row[f"recovery_{key}_low"], row[f"recovery_{key}_high"] = np.percentile([f(b) for b in boots], [2.5, 97.5])
@@ -110,6 +126,7 @@ def stats(run):
         rows.append(row)
     write_csv(run / "intervention_results.csv", rows)
     # Direct paired tests against the scalar control at the same strength.
+    # An interval that excludes 0 means the targeted method differs from simply lowering w by the same amount.
     pairs = []
     for method in ("score", "freq", "cond", "feat"):
         for strength in ("0.5", "1"):
@@ -128,7 +145,7 @@ def stats(run):
 def figures(run, sheet_seed):
     """Diversity against fidelity for every method, plus a sample sheet for one held-out seed."""
     import matplotlib
-    matplotlib.use("Agg")
+    matplotlib.use("Agg")  # render to files without a display
     import matplotlib.pyplot as plt
     from PIL import Image, ImageDraw
     from guidance_figures import INK, MUTED, SURFACE, GRID, header, save
@@ -141,9 +158,11 @@ def figures(run, sheet_seed):
     out.mkdir(exist_ok=True)
     fig, axes = plt.subplots(1, 3, figsize=(13, 4.8), dpi=170, facecolor=SURFACE)
     for ax, key, label in zip(axes, ("V_low", "dino", "clip"), ("layout diversity: low-band latent V", "DINOv2 diversity", "CLIP diversity")):
+        # One line per method from w = 4 (strength 0) through strength 0.5 to 1; x = fidelity, y = diversity.
         for method, color, name in methods:
             chain = ["w4", f"{method}_0.5", f"{method}_1"]
             ax.plot([v(c, "p_target") for c in chain], [v(c, key) for c in chain], color=color, lw=2, marker="o", ms=5, mec=SURFACE, mew=1.2)
+        # Dotted extension from scalar_1 to w = 1 (scalar damping at full strength in the window, versus no guidance at all).
         ax.plot([v("scalar_1", "p_target"), v("w1", "p_target")], [v("scalar_1", key), v("w1", key)], color="#2a78d6", lw=1, ls=":")
         for c, mark in (("w4", "s"), ("w1", "D"), ("wrongclass_1", "x")):
             ax.scatter([v(c, "p_target")], [v(c, key)], color=INK if c != "wrongclass_1" else MUTED, marker=mark, s=36, zorder=4)
@@ -166,21 +185,24 @@ def figures(run, sheet_seed):
            "Held-out seeds 16–31, 8 classes. Points along each line: λ = 0 (w = 4), 0.5, 1. Up and to the right is better. All conditions: 98 model passes.", 0.915)
     save(fig, out, "13_intervention_tradeoff.png", (0, 0.06, 1, 0.87))
 
+    # Sample sheet: one row per condition, the 8 classes across, all from the same seed (so the same starting noise).
     conditions = ["w1", "w4", "scalar_1", "score_1", "freq_1", "cond_1", "feat_1", "wrongclass_1", "cond_0.5"]
-    tile, pad = 110, 92
+    tile, pad = 110, 92  # tile: thumbnail size in pixels; pad: left margin for the condition name
     sheet = Image.new("RGB", (pad + 8 * tile, len(conditions) * tile), "white")
     draw = ImageDraw.Draw(sheet)
     for r, c in enumerate(conditions):
         image = Image.open(run / "samples" / f"{c}_seed_{sheet_seed}.png").convert("RGB")
+        # save_image wrote a 2 x 4 grid with 2-pixel padding, so each cell is 256 + 2 = 258 pixels and the grid starts at offset 2.
         size = (image.size[0] - 2) // 4
         draw.text((4, r * tile + tile // 2 - 6), c, fill="black")
         for i in range(8):
-            a, b = divmod(i, 4)
+            a, b = divmod(i, 4)  # grid row and column of class i
             sheet.paste(image.crop((2 + b * size, 2 + a * size, 2 + b * size + 256, 2 + a * size + 256)).resize((tile - 2, tile - 2)), (pad + i * tile, r * tile + 1))
     sheet.save(out / f"14_intervention_samples_seed{sheet_seed}.png")
 
 
 def main():
+    """Each flag runs one phase; --embed must have run before --stats, and --stats before --figures."""
     p = argparse.ArgumentParser()
     p.add_argument("--run", required=True)
     p.add_argument("--embed", action="store_true")

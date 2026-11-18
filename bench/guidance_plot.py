@@ -16,6 +16,7 @@ SERIES, INK, MUTED, GRID = "#2a78d6", "#0b0b0b", "#52514e", "#e6e5e0"
 
 
 def load(run):
+    """Read the manifest and every seed's metrics. Returns (manifest, t, {metric: (T, seeds, classes)})."""
     man = json.loads((run / "manifest.json").read_text())
     data = [np.load(run / f"seed_{s}.npz") for s in man["seeds"]]
     stack = lambda key: np.stack([d[key] for d in data], 1)  # (T, seeds, classes)
@@ -23,6 +24,7 @@ def load(run):
 
 
 def write_tables(run, man, t, m):
+    """metrics_per_trajectory.csv: one row per (seed, class, step). metrics_by_timestep.csv: summary over trajectories per step."""
     with open(run / "metrics_per_trajectory.csv", "w", newline="") as f:
         w = csv.writer(f)
         w.writerow("seed label label_name step t delta_norm cos_prev delta_norm_guided cos_prev_guided".split())
@@ -44,6 +46,7 @@ def write_tables(run, man, t, m):
 
 
 def panel(ax, t, values, ylabel):
+    """One subplot: mean line plus a 10th-90th percentile band. values: (T, trajectories)."""
     mean = values.mean(1)
     # Percentiles rather than +/-1 SD: cosine is capped at 1 and skewed, and mean + SD goes past 1 near t = 0.08.
     low, high = np.percentile(values, [10, 90], axis=1)
@@ -59,6 +62,7 @@ def panel(ax, t, values, ylabel):
 
 
 def plot(run, man, t, m, title):
+    """guidance_delta.png: top, the size of Delta over time; bottom, how much its direction changes from one step to the next."""
     # Merge the seed and class axes, so each timestep has one column per trajectory (64 here).
     flat = lambda a: a.reshape(a.shape[0], -1)
     n = flat(m["norm"]).shape[1]
