@@ -33,10 +33,40 @@ def encoder(name, device, **kwargs):
     return model, mean, std
 
 
-def embed(enc, images):
-    """images: (B, 3, 224, 224) in [0, 1]. Returns the model's global embedding."""
+def load_models(device):
+    """The VAE and both embedding models, set up identically for every script that measures diversity."""
+    vae = AutoencoderKL.from_pretrained(VAE).to(device).eval()
+    # img_size=224 resamples DINOv2's position embeddings from its native 518, giving 16x16 patches of size 14.
+    dino = encoder(DINO, device, num_classes=0, img_size=SIZE)
+    clip = encoder(CLIP, device)  # the default head is CLIP's learned projection, so this is the 512-d image embedding
+    return vae, dino, clip
+
+
+def decode(vae, z):
+    """z: (B, 4, 32, 32) SiT latents on the device. Returns the decoded images at 256 x 256 and resized to 224 x 224, in [0, 1]."""
+    # SiT's latents are the VAE's latents times LATENT_SCALE, so divide before decoding. The VAE decodes to pixel values in
+    # [-1, 1]; (x + 1) / 2 maps them to [0, 1], and clamp trims any overshoot.
+    image = ((vae.decode(z / LATENT_SCALE).sample + 1) / 2).clamp(0, 1)
+    # Resize 256 -> 224 for the encoders. antialias avoids aliasing when downsampling.
+    small = F.interpolate(image, size=SIZE, mode="bicubic", antialias=True).clamp(0, 1)
+    return image, small
+
+
+def encode(enc, images):
+    """images: (B, 3, 224, 224) in [0, 1]. Normalize the way the model was trained, run it, and return its output on the device."""
     model, mean, std = enc
-    return model((images - mean) / std).float().cpu().numpy()
+    return model((images - mean) / std).float()
+
+
+def decode_and_embed(vae, dino, clip, z):
+    """Decode latents z and embed the images.
+
+    Returns (image at 256px, image at 224px, DINOv2 embeddings (B, 768), CLIP embeddings (B, 512)); the images stay torch tensors on
+    the device, the embeddings are numpy arrays. Both diversity analyses (Table 2 via this script, Table 3 via guidance_intervene_eval.py) go through this one function,
+    so semantic diversity is measured the same way in both.
+    """
+    image, small = decode(vae, z)
+    return image, small, encode(dino, small).cpu().numpy(), encode(clip, small).cpu().numpy()
 
 
 def main():
@@ -52,10 +82,7 @@ def main():
     run = Path(a.run)
     out = run / "analysis" / "embeddings"
     out.mkdir(parents=True, exist_ok=True)
-    vae = AutoencoderKL.from_pretrained(VAE).to(a.device).eval()
-    # img_size=224 resamples DINOv2's position embeddings from its native 518, giving 16x16 patches of size 14.
-    dino = encoder(DINO, a.device, num_classes=0, img_size=SIZE)
-    clip = encoder(CLIP, a.device)  # the default head is CLIP's learned projection, so this is the 512-d image embedding
+    vae, dino, clip = load_models(a.device)
     # Record exactly which models produced the embeddings, so later analyses can be traced back to them.
     info = dict(vae=VAE, dino=DINO, clip=CLIP, image_size=SIZE, timm=timm.__version__, rows="0 = final sample",
                 dino_hub=dino[0].pretrained_cfg.get("hf_hub_id"), clip_hub=clip[0].pretrained_cfg.get("hf_hub_id"))
@@ -67,12 +94,10 @@ def main():
             if path.exists():
                 continue
             z = torch.from_numpy(np.load(run / f"w{w:g}" / f"seed_{seed}" / "trajectory.npz")["final"]).to(a.device)  # (8, 4, 32, 32)
-            # The VAE decodes to pixel values in [-1, 1]; (x + 1) / 2 maps them to [0, 1], and clamp trims any overshoot.
-            image = ((vae.decode(z / LATENT_SCALE).sample + 1) / 2).clamp(0, 1)
-            # Resize 256 -> 224 for the encoders. antialias avoids aliasing when downsampling.
-            small = F.interpolate(image, size=SIZE, mode="bicubic", antialias=True).clamp(0, 1)
+            _, _, dino_emb, clip_emb = decode_and_embed(vae, dino, clip, z)
             tmp = path.with_suffix(".tmp.npz")
-            np.savez(tmp, dino=embed(dino, small)[None], clip=embed(clip, small)[None])
+            # [None] adds the leading axis of length 1 (the final sample) that guidance_window.py reads as row [-1].
+            np.savez(tmp, dino=dino_emb[None], clip=clip_emb[None])
             tmp.rename(path)  # a file at the final path is always complete
             print(f"w={w:g} seed={seed} done", flush=True)
 

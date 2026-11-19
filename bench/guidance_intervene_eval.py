@@ -32,14 +32,11 @@ def embed(run, device="mps"):
     The sample grids in <run>/samples/ are the images the report's sample figures were assembled from.
     """
     # Imported here so --stats runs without these heavy packages loaded.
-    import torch.nn.functional as F
-    from diffusers.models import AutoencoderKL
     from torchvision.utils import save_image
-    from guidance_embed import CLIP, DINO, LATENT_SCALE, SIZE, VAE, encoder
+    from guidance_embed import decode_and_embed, encode, encoder, load_models
     torch.set_grad_enabled(False)
-    vae = AutoencoderKL.from_pretrained(VAE).to(device).eval()
-    dino = encoder(DINO, device, num_classes=0, img_size=SIZE)
-    clip = encoder(CLIP, device)
+    # The same VAE, DINOv2 and CLIP setup as guidance_embed.py, so diversity here is measured exactly as in Table 2.
+    vae, dino, clip = load_models(device)
     classifier = encoder(CLASSIFIER, device)
     labels = torch.tensor(LABELS, device=device)
     for path in sorted(run.glob("*/seed_*.npz")):
@@ -50,18 +47,15 @@ def embed(run, device="mps"):
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
         z = torch.from_numpy(np.load(path)["final"]).to(device)
-        # SiT's latents are the VAE's latents times 0.18215, so divide before decoding. The VAE outputs [-1, 1]; map to [0, 1].
-        image = ((vae.decode(z / LATENT_SCALE).sample + 1) / 2).clamp(0, 1)
-        small = F.interpolate(image, size=SIZE, mode="bicubic", antialias=True).clamp(0, 1)  # 256 -> 224, the encoders' input size
-        # enc is (model, mean, std) from guidance_embed.encoder: normalize the way that model was trained, then run it.
-        run_enc = lambda enc: enc[0]((small - enc[1]) / enc[2]).float()
-        prob = run_enc(classifier).softmax(-1)
+        image, small, dino_emb, clip_emb = decode_and_embed(vae, dino, clip, z)
+        # The fidelity classifier sees the same 224px images as the embedding models.
+        prob = encode(classifier, small).softmax(-1)
         rows = torch.arange(len(LABELS), device=device)
         (run / "samples").mkdir(exist_ok=True)
         save_image(image.cpu(), run / "samples" / f"{path.parent.name}_{path.stem}.png", nrow=4)  # 2 x 4 grid of the 8 classes
         tmp = target.with_suffix(".tmp.npz")
         # p_target: the classifier's probability for each sample's intended class, prob[i, LABELS[i]].
-        np.savez(tmp, dino=run_enc(dino).cpu().numpy(), clip=run_enc(clip).cpu().numpy(), p_target=prob[rows, labels].cpu().numpy())
+        np.savez(tmp, dino=dino_emb, clip=clip_emb, p_target=prob[rows, labels].cpu().numpy())
         tmp.rename(target)
         print("embedded", path.parent.name, path.stem, flush=True)
 
