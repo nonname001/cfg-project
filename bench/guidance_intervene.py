@@ -20,6 +20,8 @@ guidance along the targeted component, that is, guidance beyond w = 1. With exce
              class) rank-16 subspace: the top directions of d averaged over calibration seeds, at every token and early step.
              Unlike feat, it acts per token (most of d is not spatially uniform) and on the mid blocks, where d is shared
              across seeds. L = 4/3 removes the component entirely. Needs --token-tables (--build-token-tables).
+  tfeatwrong_L  tfeat using the next class's bases: tests whether its class-specific directions matter.
+  A '+' joins one of score/wrongclass/freq with one of tfeat/tfeatwrong, e.g. tfeat_1.3333+score_1.
 
 score, freq and scalar act on the 3 guided channels only; cond and feat change f_cond, so they also reach channel 3.
 
@@ -201,8 +203,18 @@ def load_tables(path, device):
 
 
 def run_condition(model, sample_fn, condition, seed, device, tables):
-    """Sample one batch under one condition. Returns (initial noise, final latents)."""
-    method, strength = parse(condition)
+    """Sample one batch under one condition. Returns (initial noise, final latents).
+
+    A condition may join one score-space part (score, wrongclass, freq) and one token part (tfeat, tfeatwrong) with '+', e.g.
+    'tfeat_1.3333+score_1'. They act at different places (inside the blocks, and on the returned velocity), so they compose.
+    """
+    parts = dict(parse(part) for part in condition.split("+"))
+    LATENT, TOKEN = ("score", "wrongclass", "freq"), ("tfeat", "tfeatwrong")
+    assert len(parts) == 1 or (len(parts) == 2 and sum(m in LATENT for m in parts) == 1 and sum(m in TOKEN for m in parts) == 1), \
+        f"only one score-space part and one token part can be combined: {condition}"
+    method, strength = next(iter(parts.items())) if len(parts) == 1 else (None, None)  # single-method branches below
+    latent_method = next((m for m in LATENT if m in parts), None)
+    token_method = next((m for m in TOKEN if m in parts), None)
     n = len(LABELS)
     z = initial_noise(seed)
     x = torch.cat([z, z], 0).to(device)
@@ -212,10 +224,13 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
     excess = (W - 1) / W  # the share of the class signal that cond and feat remove at strength 1
 
     basis = None
-    if method in ("score", "wrongclass"):
+    if latent_method in ("score", "wrongclass"):
         # wrongclass: roll(-1) shifts the class axis, so sample i gets class i+1's subspace (wrapping around). Same rank and
         # same kind of direction, but the wrong class. If this damps as well as score, class-specific directions do not matter.
-        basis = tables["latent"] if method == "score" else tables["latent"].roll(-1, 0)
+        basis = tables["latent"] if latent_method == "score" else tables["latent"].roll(-1, 0)
+    if token_method:
+        # tfeatwrong: the same class shift for the token bases, whose class axis is 1: (blocks, classes, rank, 1024).
+        token_basis = tables["token"] if token_method == "tfeat" else tables["token"].roll(-1, 1)
 
     forward = model.forward
 
@@ -231,10 +246,10 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
             # w1: no guidance at any step. scalar: a smaller w during the window, the same in every direction.
             kwargs["cfg_scale"] = 1.0 if method == "w1" else 1 + (W - 1) * (1 - strength)
         out = model.forward_with_cfg(xb, tb, **kwargs)
-        if state["active"] and method in ("score", "wrongclass", "freq"):
+        if state["active"] and latent_method:
             last = state["last"]
             delta = (last[:n, :GUIDED_CHANNELS] - last[n:, :GUIDED_CHANNELS]).float()
-            if method == "freq":
+            if latent_method == "freq":
                 # Low-pass each channel's 32 x 32 map with one matmul: (n, 3, 1024) @ (1024, 1024).
                 part = (delta.reshape(n, GUIDED_CHANNELS, 1024) @ tables["low_pass"].T).reshape(delta.shape)
             else:
@@ -242,7 +257,7 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
                 flat = delta.reshape(n, -1)
                 part = torch.einsum("nk,nkd->nd", torch.einsum("nkd,nd->nk", basis, flat), basis).reshape(delta.shape)
             out = out.clone()
-            out[:n, :GUIDED_CHANNELS] -= (W - 1) * strength * part  # excess guidance loses L * part
+            out[:n, :GUIDED_CHANNELS] -= (W - 1) * parts[latent_method] * part  # excess guidance loses L * part
         return out
 
     def embed_hook(_module, _inputs, emb):  # rows [:n] are class embeddings, rows [n:] the null embedding
@@ -280,10 +295,10 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
         def hook(_module, _inputs, out):
             if not state["active"]:
                 return None
-            u = tables["token"][index]  # (8 classes, rank, 1024)
+            u = token_basis[index]  # (8 classes, rank, 1024)
             d = out[:n] - out[n:]  # (n, tokens, 1024)
             part = torch.einsum("ntk,nkd->ntd", torch.einsum("ntd,nkd->ntk", d, u), u)
-            return torch.cat([out[:n] - excess * strength * part, out[n:]], 0)
+            return torch.cat([out[:n] - excess * parts[token_method] * part, out[n:]], 0)
         return hook
 
     # Register only the hooks the chosen method needs; the score-space methods need none.
@@ -296,7 +311,7 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
             if s == 0:
                 continue  # alpha = 1 leaves c unchanged; skipping the hook keeps those modules bit-identical to w4
             handles += [m.register_forward_pre_hook(condition_hook(1 - s * excess)) for m in modules]
-    if method == "tfeat":
+    if token_method:
         handles += [model.blocks[b].register_forward_hook(token_hook(i)) for i, b in enumerate(TOKEN_BLOCKS)]
     if method == "feat":
         handles += [model.blocks[b].register_forward_hook(block_hook(i)) for i, b in enumerate(FEATURE_BLOCKS)]
