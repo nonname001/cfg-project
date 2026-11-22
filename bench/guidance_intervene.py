@@ -16,12 +16,17 @@ guidance along the targeted component, that is, guidance beyond w = 1. With exce
              takes L3 if given, else L2. L = 4/3 makes a = 0: those blocks see only the null class.
              Each group's blocks read c' = c_null + a_g (c_cond - c_null), a_g = 1 - L_g(w-1)/w. The timestep embedding is the
              same in both rows, so this equals cond's embedding interpolation, restricted to those blocks. bcond_L-L-L = cond_L.
+  tfeat_L    in blocks 8-15, each conditional token loses (w-1)/w * L of its cond - uncond difference d inside a per-(block,
+             class) rank-16 subspace: the top directions of d averaged over calibration seeds, at every token and early step.
+             Unlike feat, it acts per token (most of d is not spatially uniform) and on the mid blocks, where d is shared
+             across seeds. L = 4/3 removes the component entirely. Needs --token-tables (--build-token-tables).
 
 score, freq and scalar act on the 3 guided channels only; cond and feat change f_cond, so they also reach channel 3.
 
 Subspaces are fit on the calibration seeds of a guidance_capture.py run (--build-tables); evaluate on other seeds.
 usage: guidance_intervene.py --build-tables --calibration <run> --tables <file>
-       guidance_intervene.py --tables <file> --weights <file> --out <dir> --seeds 16 17 ... [--conditions w1 w4 ...]
+       guidance_intervene.py --build-token-tables --calibration <token run> --token-tables <file>
+       guidance_intervene.py --tables <file> [--token-tables <file>] --weights <file> --out <dir> --seeds 16 17 ... [--conditions w1 w4 ...]
 
 Why "excess guidance": plain CFG gives f_guided = f_uncond + w*Delta = f_cond + (w-1)*Delta. The f_cond part is what w = 1 would
 use, so (w-1)*Delta is everything guidance adds on top. Each method removes a fraction lambda of that excess along one component,
@@ -47,6 +52,8 @@ EARLY_END = 0.3  # interventions act only while s_t < 0.3, the early phase where
 RANK = 3  # dimensions of each class's shared subspace
 LOW_CUTOFF = 4  # low-pass radius for freq, in cycles per 32-pixel latent (Nyquist is 16)
 FEATURE_BLOCKS = list(range(13, 24))  # the later blocks, where w = 4 lowered effective rank in the 16-seed run
+TOKEN_BLOCKS = list(range(8, 16))  # tfeat's blocks: where cond - uncond is most shared across seeds (cond_tokens.py)
+TOKEN_RANK = 16
 BLOCK_GROUPS = [range(0, 8), range(8, 16), range(16, 24)]  # bcond's groups; the final layer has its own strength
 # The conditions the report's intervention table uses (score_0.5 also appears in its shuffled-push comparison).
 CONDITIONS = ["w1", "w4", "scalar_1", "score_0.5", "score_1", "freq_1", "cond_0.5", "cond_1", "feat_1", "wrongclass_1"]
@@ -80,6 +87,30 @@ def build_tables(run, path, seeds=range(16)):
     latent_basis = np.stack([top(latents[:, c]) for c in range(8)]).astype(np.float32)  # (8, 3, 3072), orthonormal rows
     feature_basis = np.stack([np.stack([top(features[:, b, c]) for c in range(8)]) for b in range(len(FEATURE_BLOCKS))]).astype(np.float32)  # (11 blocks, 8, 3, 1024)
     np.savez(path, latent_basis=latent_basis, feature_basis=feature_basis, seeds=np.array(list(seeds)), early_end=EARLY_END, rank=RANK)
+
+
+def build_token_tables(run, path):
+    """tfeat's bases from a guidance_capture.py --token-steps run (w = 4): per block in TOKEN_BLOCKS and class, the top
+    TOKEN_RANK right singular vectors of the seed-averaged token push d, stacked over the early token steps.
+
+    As in build_tables, averaging over seeds keeps the shared part, and the matrix is not centered: the mean push is the target.
+    """
+    run = Path(run)
+    folder = run / "w4"
+    seeds = sorted(int(p.parent.name[5:]) for p in folder.glob("seed_*/metadata.json"))
+    steps = json.loads((run / "manifest.json").read_text())["token_steps"]
+    s_t = np.load(folder / f"seed_{seeds[0]}" / "trajectory.npz")["s_t"]
+    early = [i for i, k in enumerate(steps) if s_t[k] < EARLY_END]
+    D = [np.load(folder / f"seed_{s}" / "tokens_delta.npy", mmap_mode="r") for s in seeds]
+    n_classes = D[0].shape[2]
+    basis = np.zeros((len(TOKEN_BLOCKS), n_classes, TOKEN_RANK, D[0].shape[-1]), np.float32)
+    for j, b in enumerate(TOKEN_BLOCKS):
+        for c in range(n_classes):
+            # (early steps * 256 tokens, 1024): the shared push at every token and early step.
+            mean = np.concatenate([np.mean([x[i, b, c].astype(np.float64) for x in D], 0) for i in early], 0)
+            basis[j, c] = np.linalg.svd(mean, full_matrices=False)[2][:TOKEN_RANK]
+    np.savez(path, token_basis=basis, seeds=np.array(seeds), blocks=np.array(TOKEN_BLOCKS), steps=np.array([steps[i] for i in early]),
+             early_end=EARLY_END, rank=TOKEN_RANK)
 
 
 def low_pass_matrix():
@@ -243,6 +274,18 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
             return x, torch.cat([c[n:] + alpha * (c[:n] - c[n:]), c[n:]], 0)
         return hook
 
+    def token_hook(index):
+        # tfeat: index is the position in TOKEN_BLOCKS. Each conditional token's push d = cond - uncond is projected onto its
+        # class's subspace, and that part is reduced, the same shift a feat edit makes but separately at every token.
+        def hook(_module, _inputs, out):
+            if not state["active"]:
+                return None
+            u = tables["token"][index]  # (8 classes, rank, 1024)
+            d = out[:n] - out[n:]  # (n, tokens, 1024)
+            part = torch.einsum("ntk,nkd->ntd", torch.einsum("ntd,nkd->ntk", d, u), u)
+            return torch.cat([out[:n] - excess * strength * part, out[n:]], 0)
+        return hook
+
     # Register only the hooks the chosen method needs; the score-space methods need none.
     handles = []
     if method == "cond":
@@ -253,6 +296,8 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
             if s == 0:
                 continue  # alpha = 1 leaves c unchanged; skipping the hook keeps those modules bit-identical to w4
             handles += [m.register_forward_pre_hook(condition_hook(1 - s * excess)) for m in modules]
+    if method == "tfeat":
+        handles += [model.blocks[b].register_forward_hook(token_hook(i)) for i, b in enumerate(TOKEN_BLOCKS)]
     if method == "feat":
         handles += [model.blocks[b].register_forward_hook(block_hook(i)) for i, b in enumerate(FEATURE_BLOCKS)]
     model.forward = recording_forward
@@ -272,16 +317,21 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--build-tables", action="store_true")
     p.add_argument("--calibration")
-    p.add_argument("--tables", required=True)
+    p.add_argument("--tables")
     p.add_argument("--weights")
     p.add_argument("--out")
     p.add_argument("--seeds", type=int, nargs="+")
     p.add_argument("--conditions", nargs="+", default=CONDITIONS)
     p.add_argument("--steps", type=int, default=50)
     p.add_argument("--device", default="mps")
+    p.add_argument("--token-tables", help="tfeat bases; with --build-token-tables, where to write them")
+    p.add_argument("--build-token-tables", action="store_true", help="fit tfeat bases from the --calibration token run")
     a = p.parse_args()
     if a.build_tables:
         build_tables(a.calibration, a.tables)
+        return
+    if a.build_token_tables:
+        build_token_tables(a.calibration, a.token_tables)
         return
 
     torch.set_grad_enabled(False)
@@ -297,6 +347,11 @@ def main():
                     rank=RANK, low_cutoff=LOW_CUTOFF, feature_blocks=FEATURE_BLOCKS, grid_points=a.steps, model_calls=a.steps - 1,
                     branch_evaluations=2 * (a.steps - 1), sampler="euler", guided_channels=GUIDED_CHANNELS, classes=LABELS, device=a.device,
                     calibration_seeds=saved["seeds"].tolist())
+    if a.token_tables:  # only runs that use tfeat carry these keys, so older manifests still match
+        token = np.load(a.token_tables)
+        assert not set(a.seeds) & set(token["seeds"].tolist()), "evaluation seeds overlap the token-table calibration seeds"
+        tables["token"] = torch.from_numpy(token["token_basis"]).to(a.device)
+        manifest.update(token_tables=a.token_tables, token_tables_sha256=sha256(a.token_tables), token_blocks=TOKEN_BLOCKS, token_rank=TOKEN_RANK)
     path = out / "manifest.json"
     if path.exists():  # resuming: settings must match the samples already saved
         assert json.loads(path.read_text()) == manifest, "settings differ from the existing manifest in --out"
