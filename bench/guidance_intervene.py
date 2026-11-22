@@ -12,7 +12,8 @@ guidance along the targeted component, that is, guidance beyond w = 1. With exce
   feat_L     in blocks 13-23, conditional rows lose (w-1)/w * L of the pooled cond-uncond difference inside a per-class rank-3
              subspace, again targeting w*(1 - (w-1)/w) = 1 to first order.
   wrongclass_L  score_L using the next class's subspace: tests whether class-specific directions matter.
-  bcond_L0-L1-L2  cond with its own strength per block group (BLOCK_GROUPS: blocks 0-7, 8-15, 16-23 plus the final layer).
+  bcond_L0-L1-L2[-L3]  cond with its own strength per block group (BLOCK_GROUPS: blocks 0-7, 8-15, 16-23). The final layer
+             takes L3 if given, else L2. L = 4/3 makes a = 0: those blocks see only the null class.
              Each group's blocks read c' = c_null + a_g (c_cond - c_null), a_g = 1 - L_g(w-1)/w. The timestep embedding is the
              same in both rows, so this equals cond's embedding interpolation, restricted to those blocks. bcond_L-L-L = cond_L.
 
@@ -46,7 +47,7 @@ EARLY_END = 0.3  # interventions act only while s_t < 0.3, the early phase where
 RANK = 3  # dimensions of each class's shared subspace
 LOW_CUTOFF = 4  # low-pass radius for freq, in cycles per 32-pixel latent (Nyquist is 16)
 FEATURE_BLOCKS = list(range(13, 24))  # the later blocks, where w = 4 lowered effective rank in the 16-seed run
-BLOCK_GROUPS = [range(0, 8), range(8, 16), range(16, 24)]  # bcond's groups; the final layer is treated as part of the last
+BLOCK_GROUPS = [range(0, 8), range(8, 16), range(16, 24)]  # bcond's groups; the final layer has its own strength
 # The conditions the report's intervention table uses (score_0.5 also appears in its shuffled-push comparison).
 CONDITIONS = ["w1", "w4", "scalar_1", "score_0.5", "score_1", "freq_1", "cond_0.5", "cond_1", "feat_1", "wrongclass_1"]
 
@@ -99,8 +100,9 @@ def parse(condition):
     method, strength = condition.split("_")
     if method == "bcond":
         strengths = tuple(float(s) for s in strength.split("-"))
-        assert len(strengths) == len(BLOCK_GROUPS), f"bcond needs one strength per block group: {condition}"
-        return method, strengths
+        assert len(strengths) in (len(BLOCK_GROUPS), len(BLOCK_GROUPS) + 1), f"bcond needs one strength per block group: {condition}"
+        assert all(0 <= x <= W / (W - 1) + 1e-9 for x in strengths), f"bcond strengths must give 0 <= a <= 1: {condition}"
+        return method, strengths + strengths[-1:] * (len(strengths) == len(BLOCK_GROUPS))  # final layer defaults to the last group
     return method, float(strength)
 
 
@@ -246,10 +248,10 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
     if method == "cond":
         handles.append(model.y_embedder.register_forward_hook(embed_hook))
     if method == "bcond":
-        for group, s in zip(BLOCK_GROUPS, strength):
+        # strength holds one value per block group, then one for the final layer.
+        for modules, s in zip([[model.blocks[b] for b in g] for g in BLOCK_GROUPS] + [[model.final_layer]], strength):
             if s == 0:
-                continue  # alpha = 1 leaves c unchanged; skipping the hook keeps those blocks bit-identical to w4
-            modules = [model.blocks[b] for b in group] + ([model.final_layer] if group is BLOCK_GROUPS[-1] else [])
+                continue  # alpha = 1 leaves c unchanged; skipping the hook keeps those modules bit-identical to w4
             handles += [m.register_forward_pre_hook(condition_hook(1 - s * excess)) for m in modules]
     if method == "feat":
         handles += [model.blocks[b].register_forward_hook(block_hook(i)) for i, b in enumerate(FEATURE_BLOCKS)]
