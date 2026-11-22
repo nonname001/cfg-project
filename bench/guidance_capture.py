@@ -9,6 +9,9 @@ Layout under --out:
     <condition>/seed_<n>/metadata.json  per-batch metadata, noise and final-latent hashes, timing
     <condition>/seed_<n>/trajectory.npz s_t (T,); z, final (8,4,32,32); f_cond, f_uncond, delta (T,8,4,32,32)
     <condition>/seed_<n>/pooled.npy     (T, 24 blocks, 2 branches, 8 classes, 1024), each block's output averaged over 256 tokens
+    <condition>/seed_<n>/tokens_uncond.npy, tokens_delta.npy
+                                        only with --token-steps: (K, 24 blocks, 8 classes, 256 tokens, 1024) float16 each, the
+                                        unpooled unconditional block outputs and cond - uncond at those K steps (~200 MB per step)
 
 T = 49 model calls. Branch axis: 0 = conditional, 1 = unconditional. Rerunning with the same --out skips finished batches.
 Conditions:
@@ -16,7 +19,10 @@ Conditions:
     --window lo hi    guidance w only for lo <= s_t < hi and 1 elsewhere (windowed guidance)
     --conditions ...  each name is w<value> or an intervention spec from guidance_intervene.py (score_1, cond_0.5,
                       score_1+cond_0.5), run at w = 4 and stored under that name
-usage: guidance_capture.py --weights <file> --out <dir> [--seeds 0 1 ...] [--ws 4 1] [--window lo hi]    (from the project root)
+    --token-steps k.. also save unpooled activations at these step indices (s_t = k/49). Late blocks have outlier
+                      activations near 1000, so cond - uncond is formed in float32 and only then rounded to float16
+usage: guidance_capture.py --weights <file> --out <dir> [--seeds 0 1 ...] [--ws 4 1] [--window lo hi] [--token-steps 0 5 ...]
+       (from the project root)
 
 Names used below:
     f_cond     velocity the network predicts with the class label (conditional branch)
@@ -39,8 +45,11 @@ from transport import Sampler, create_transport
 SAMPLER = "euler"  # torchdiffeq fixed-step; SiT's default ODE sampler is adaptive dopri5, which has no fixed "step k"
 
 
-def run_batch(model, sample_fn, seed, w, device, model_calls, window=None, intervention=None):
-    """Sample one batch at guidance scale w, optionally only inside window, and return the logged arrays and pooled activations."""
+def run_batch(model, sample_fn, seed, w, device, model_calls, window=None, intervention=None, token_steps=()):
+    """Sample one batch at guidance scale w, optionally only inside window.
+
+    Returns the logged arrays, the pooled activations, and the unpooled activations at token_steps (None if there are none).
+    """
     n = len(LABELS)
     z = initial_noise(seed)  # depends only on the seed, so every condition starts from identical noise
     # CFG batch layout: rows [:n] carry the real class labels, rows [n:] the null class, and both start from the same z.
@@ -55,11 +64,20 @@ def run_batch(model, sample_fn, seed, w, device, model_calls, window=None, inter
     step = 0  # index of the model call in progress; advanced by recording_forward after each call
     last = {}  # the most recent raw branch output, still on the device, for the score intervention
     pooled_step = [None] * n_blocks  # stays on the GPU until the step ends, avoiding a device sync per block
+    token_slot = {k: i for i, k in enumerate(token_steps)}  # step index -> position along the K axis of tokens
+    n_tokens = model.x_embedder.num_patches
+    # Two float16 arrays, unconditional and delta = cond - uncond, rather than both branches: the subtraction happens in float32
+    # before rounding, so delta keeps float16's relative precision instead of losing it to cancellation between large values.
+    shape = (len(token_steps), n_blocks, n, n_tokens, width)
+    tokens = dict(uncond=np.empty(shape, np.float16), delta=np.empty(shape, np.float16)) if token_steps else None
+    token_step = [None] * n_blocks
 
     def block_hook(index):
         # A factory, so each block's hook remembers its own index. (A bare lambda in a loop would see only the last index.)
         def hook(_module, _inputs, out):  # out: (2n, tokens, width). Returning None leaves the output untouched.
             pooled_step[index] = out.mean(dim=1)  # the tokens are the 16x16 patch grid, so this averages over H and W
+            if step in token_slot:
+                token_step[index] = out  # a reference only; nothing later in the forward pass modifies a block's output in place
         return hook
 
     # Keep a reference to the real bound method before shadowing it, so the wrapper below can still call it.
@@ -77,6 +95,13 @@ def run_batch(model, sample_fn, seed, w, device, model_calls, window=None, inter
         # By now every block hook of this call has run, so all 24 pooled vectors exist and can be copied off the GPU in one go.
         # The 2n batch rows reshape to (2 branches, n classes): conditional rows come first, matching the branch axis.
         pooled[step] = torch.stack(pooled_step).float().cpu().numpy().reshape(n_blocks, 2, n, width)
+        if step in token_slot:
+            # One block at a time, so only one block's tokens (2n x 256 x 1024) is ever copied off the device at once.
+            for b in range(n_blocks):
+                h = token_step[b].float()  # rows [:n] conditional, [n:] unconditional
+                tokens["uncond"][token_slot[step], b] = h[n:].half().cpu().numpy()
+                tokens["delta"][token_slot[step], b] = (h[:n] - h[n:]).half().cpu().numpy()
+            token_step[:] = [None] * n_blocks
         step += 1
         return out
 
@@ -116,10 +141,12 @@ def run_batch(model, sample_fn, seed, w, device, model_calls, window=None, inter
     arrays["delta"] = arrays["f_cond"] - arrays["f_uncond"]
     arrays.update(z=z.numpy(), final=final)
     assert all(np.isfinite(a).all() for a in (*arrays.values(), pooled)), f"non-finite values: w={w} seed={seed}"
-    return arrays, pooled
+    # Also catches float16 overflow (|x| > 65504 rounds to inf).
+    assert tokens is None or all(np.isfinite(v).all() for v in tokens.values()), f"non-finite token activations: w={w} seed={seed}"
+    return arrays, pooled, tokens
 
 
-def write_batch(out, w, seed, arrays, pooled, seconds, checkpoint, window=None, name=None, intervention=None):
+def write_batch(out, w, seed, arrays, pooled, seconds, checkpoint, window=None, name=None, intervention=None, tokens=None):
     """Write into a temporary folder, then rename: a batch folder is either complete or absent, even if the run is stopped."""
     name = name or f"w{w:g}"  # :g drops a trailing ".0", so w=4.0 is stored as "w4"
     final_dir = out / name / f"seed_{seed}"
@@ -128,6 +155,9 @@ def write_batch(out, w, seed, arrays, pooled, seconds, checkpoint, window=None, 
     tmp.mkdir(parents=True)
     np.savez(tmp / "trajectory.npz", **arrays)
     np.save(tmp / "pooled.npy", pooled)  # plain .npy (not .npz) so readers can memory-map it with mmap_mode="r"
+    if tokens is not None:  # likewise memory-mappable: over a GB per batch, too large to load whole
+        for key, array in tokens.items():
+            np.save(tmp / f"tokens_{key}.npy", array)
     # The noise and final hashes let a later run prove it saw the same noise and produced bit-identical samples.
     meta = dict(seed=seed, w=w, classes=LABELS, class_names=LABEL_NAMES, sampler=SAMPLER, model_calls=len(arrays["s_t"]),
                 checkpoint=checkpoint, guided_channels=GUIDED_CHANNELS, noise_sha256=array_sha256(arrays["z"]),
@@ -152,7 +182,10 @@ def main():
     p.add_argument("--window", type=float, nargs=2, help="apply w only for lo <= s_t < hi; use 1 elsewhere")
     p.add_argument("--conditions", nargs="+", help="w<value> or an intervention spec; replaces --ws")
     p.add_argument("--tables", help="intervention tables from guidance_intervene.py --build-tables")
+    p.add_argument("--token-steps", type=int, nargs="+", default=[], help="step indices at which to save unpooled activations")
     a = p.parse_args()
+    a.token_steps = sorted(set(a.token_steps))
+    assert all(0 <= k < a.steps - 1 for k in a.token_steps), f"token steps must lie in [0, {a.steps - 1})"
 
     torch.set_grad_enabled(False)  # inference only: autograd would just waste memory
     out = Path(a.out)
@@ -176,6 +209,8 @@ def main():
         packages={k: md.version(k) for k in "torch torchvision torchdiffeq diffusers timm numpy safetensors".split()})
     if a.window:  # only windowed runs carry this key, so manifests of unwindowed runs stay comparable
         manifest["window"] = a.window
+    if a.token_steps:  # likewise, so runs without token capture keep their old manifests
+        manifest.update(token_steps=a.token_steps, token_format="tokens_uncond.npy and tokens_delta.npy (cond - uncond formed in float32), float16")
     tables = None
     if a.conditions:
         # Imported only when needed: plain-w runs do not depend on the intervention code or its tables.
@@ -212,8 +247,8 @@ def main():
             start = time.perf_counter()
             # A fresh Intervention per batch, so no state (time flag, hook handles) leaks from one batch into the next.
             intervention = Intervention(spec, tables, len(LABELS)) if spec else None
-            arrays, pooled = run_batch(model, sample_fn, seed, w, a.device, model_calls, a.window, intervention)
-            write_batch(out, w, seed, arrays, pooled, time.perf_counter() - start, checkpoint, a.window, name, spec)
+            arrays, pooled, tokens = run_batch(model, sample_fn, seed, w, a.device, model_calls, a.window, intervention, a.token_steps)
+            write_batch(out, w, seed, arrays, pooled, time.perf_counter() - start, checkpoint, a.window, name, spec, tokens)
             print(f"{name} seed={seed}: {time.perf_counter() - start:.1f}s", flush=True)
 
 
