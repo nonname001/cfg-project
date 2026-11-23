@@ -168,5 +168,5 @@ does not depend on the device.
 ## Requirements
 
 Python 3.12 with torch 2.15, torchvision 0.29, torchdiffeq 0.2.5, diffusers 0.42, timm 1.0.31, numpy 2.5,
-safetensors 0.8 and matplotlib 3.11. The VAE (`stabilityai/sd-vae-ft-mse`), DINOv2, CLIP and the ImageNet classifier
+safetensors 0.8 and matplotlib 3.11; `real_fidelity.py --fetch` also needs pyarrow (26.0) and a Hugging Face login with access to the gated `ILSVRC/imagenet-1k` dataset. The VAE (`stabilityai/sd-vae-ft-mse`), DINOv2, CLIP and the ImageNet classifier
 (`vit_base_patch16_224.augreg2_in21k_ft_in1k`) download from Hugging Face on first use.

@@ -21,7 +21,8 @@ guidance along the targeted component, that is, guidance beyond w = 1. With exce
              Unlike feat, it acts per token (most of d is not spatially uniform) and on the mid blocks, where d is shared
              across seeds. L = 4/3 removes the component entirely. Needs --token-tables (--build-token-tables).
   tfeatwrong_L  tfeat using the next class's bases: tests whether its class-specific directions matter.
-  A '+' joins one of score/wrongclass/freq with one of tfeat/tfeatwrong, e.g. tfeat_1.3333+score_1.
+  late_w     guidance scale w instead of W for s_t >= EARLY_END (after the window); combinable with the parts above.
+  A '+' joins at most one of score/wrongclass/freq, one of tfeat/tfeatwrong and one late_w, e.g. tfeat_1.3333+score_1+late_5.
 
 score, freq and scalar act on the 3 guided channels only; cond and feat change f_cond, so they also reach channel 3.
 
@@ -205,13 +206,15 @@ def load_tables(path, device):
 def run_condition(model, sample_fn, condition, seed, device, tables):
     """Sample one batch under one condition. Returns (initial noise, final latents).
 
-    A condition may join one score-space part (score, wrongclass, freq) and one token part (tfeat, tfeatwrong) with '+', e.g.
-    'tfeat_1.3333+score_1'. They act at different places (inside the blocks, and on the returned velocity), so they compose.
+    A condition may join one score-space part (score, wrongclass, freq), one token part (tfeat, tfeatwrong) and one late_<w>
+    part with '+', e.g. 'tfeat_1.3333+score_1+late_5'. They act at different places (inside the blocks, on the returned
+    velocity, and on the guidance scale after the window), so they compose.
     """
     parts = dict(parse(part) for part in condition.split("+"))
     LATENT, TOKEN = ("score", "wrongclass", "freq"), ("tfeat", "tfeatwrong")
-    assert len(parts) == 1 or (len(parts) == 2 and sum(m in LATENT for m in parts) == 1 and sum(m in TOKEN for m in parts) == 1), \
-        f"only one score-space part and one token part can be combined: {condition}"
+    assert len(parts) == 1 or (set(parts) <= {*LATENT, *TOKEN, "late"} and sum(m in LATENT for m in parts) <= 1
+                               and sum(m in TOKEN for m in parts) <= 1), \
+        f"only one score-space part, one token part and a late part can be combined: {condition}"
     method, strength = next(iter(parts.items())) if len(parts) == 1 else (None, None)  # single-method branches below
     latent_method = next((m for m in LATENT if m in parts), None)
     token_method = next((m for m in TOKEN if m in parts), None)
@@ -242,6 +245,8 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
     def guided(xb, tb, **kwargs):
         # The function the sampler integrates. It sets the window flag first, because the hooks inside the forward pass read it.
         state["active"] = float(tb[0]) < EARLY_END
+        if "late" in parts and not state["active"]:
+            kwargs["cfg_scale"] = parts["late"]  # late_<w>: guidance scale w from EARLY_END to the end, W before
         if method == "w1" or (method == "scalar" and state["active"]):
             # w1: no guidance at any step. scalar: a smaller w during the window, the same in every direction.
             kwargs["cfg_scale"] = 1.0 if method == "w1" else 1 + (W - 1) * (1 - strength)
