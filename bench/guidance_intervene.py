@@ -22,6 +22,8 @@ guidance along the targeted component, that is, guidance beyond w = 1. With exce
              across seeds. L = 4/3 removes the component entirely. Needs --token-tables (--build-token-tables).
   tfeatwrong_L  tfeat using the next class's bases: tests whether its class-specific directions matter.
   late_w     guidance scale w instead of W for s_t >= EARLY_END (after the window); combinable with the parts above.
+  Modifiers of the token part: tfeatlate_L (also apply it after the window, at strength L), tend_t (token window s_t < t
+  instead of EARLY_END), trank_k (top k of the TOKEN_RANK directions), tfrom_b (only blocks b and later of TOKEN_BLOCKS).
   A '+' joins at most one of score/wrongclass/freq, one of tfeat/tfeatwrong and one late_w, e.g. tfeat_1.3333+score_1+late_5.
 
 score, freq and scalar act on the 3 guided channels only; cond and feat change f_cond, so they also reach channel 3.
@@ -212,18 +214,24 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
     """
     parts = dict(parse(part) for part in condition.split("+"))
     LATENT, TOKEN = ("score", "wrongclass", "freq"), ("tfeat", "tfeatwrong")
-    assert len(parts) == 1 or (set(parts) <= {*LATENT, *TOKEN, "late"} and sum(m in LATENT for m in parts) <= 1
+    TOKEN_MODIFIERS = ("tfeatlate", "tend", "trank", "tfrom")  # change how the token part acts; need tfeat or tfeatwrong
+    assert len(parts) == 1 or (set(parts) <= {*LATENT, *TOKEN, *TOKEN_MODIFIERS, "late"} and sum(m in LATENT for m in parts) <= 1
                                and sum(m in TOKEN for m in parts) <= 1), \
         f"only one score-space part, one token part and a late part can be combined: {condition}"
     method, strength = next(iter(parts.items())) if len(parts) == 1 else (None, None)  # single-method branches below
     latent_method = next((m for m in LATENT if m in parts), None)
     token_method = next((m for m in TOKEN if m in parts), None)
+    assert token_method or not set(parts) & set(TOKEN_MODIFIERS), f"token modifiers need tfeat or tfeatwrong: {condition}"
+    token_end = parts.get("tend", EARLY_END)  # tend_<t>: the token part acts only while s_t < t (score keeps EARLY_END)
+    assert token_end <= EARLY_END, "tend cannot extend the window; use tfeatlate for steps after it"
+    token_rank = int(parts.get("trank", TOKEN_RANK))  # trank_<k>: only the top k basis directions
+    token_blocks = [b for b in TOKEN_BLOCKS if b >= parts.get("tfrom", 0)]  # tfrom_<b>: only blocks b and later
     n = len(LABELS)
     z = initial_noise(seed)
     x = torch.cat([z, z], 0).to(device)
     y = torch.tensor(LABELS + [NULL_CLASS] * n, device=device)
     # State shared between the sampler wrapper and the hooks: whether this step is in the window, and the raw branch outputs.
-    state = dict(active=False, last=None)
+    state = dict(active=False, last=None, t=0.0)
     excess = (W - 1) / W  # the share of the class signal that cond and feat remove at strength 1
 
     basis = None
@@ -245,6 +253,7 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
     def guided(xb, tb, **kwargs):
         # The function the sampler integrates. It sets the window flag first, because the hooks inside the forward pass read it.
         state["active"] = float(tb[0]) < EARLY_END
+        state["t"] = float(tb[0])
         if "late" in parts and not state["active"]:
             kwargs["cfg_scale"] = parts["late"]  # late_<w>: guidance scale w from EARLY_END to the end, W before
         if method == "w1" or (method == "scalar" and state["active"]):
@@ -298,12 +307,18 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
         # tfeat: index is the position in TOKEN_BLOCKS. Each conditional token's push d = cond - uncond is projected onto its
         # class's subspace, and that part is reduced, the same shift a feat edit makes but separately at every token.
         def hook(_module, _inputs, out):
-            if not state["active"]:
+            # Inside the token window: the token part's strength. After the early window: tfeatlate's strength, if given, so
+            # that a late guidance boost cannot push the class-shared directions back. In between (tend < t < EARLY_END): off.
+            if state["t"] < token_end:
+                s = parts[token_method]
+            elif not state["active"] and "tfeatlate" in parts:
+                s = parts["tfeatlate"]
+            else:
                 return None
-            u = token_basis[index]  # (8 classes, rank, 1024)
+            u = token_basis[index][:, :token_rank]  # (8 classes, rank, 1024); rows are sorted by singular value
             d = out[:n] - out[n:]  # (n, tokens, 1024)
             part = torch.einsum("ntk,nkd->ntd", torch.einsum("ntd,nkd->ntk", d, u), u)
-            return torch.cat([out[:n] - excess * parts[token_method] * part, out[n:]], 0)
+            return torch.cat([out[:n] - excess * s * part, out[n:]], 0)
         return hook
 
     # Register only the hooks the chosen method needs; the score-space methods need none.
@@ -317,7 +332,7 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
                 continue  # alpha = 1 leaves c unchanged; skipping the hook keeps those modules bit-identical to w4
             handles += [m.register_forward_pre_hook(condition_hook(1 - s * excess)) for m in modules]
     if token_method:
-        handles += [model.blocks[b].register_forward_hook(token_hook(i)) for i, b in enumerate(TOKEN_BLOCKS)]
+        handles += [model.blocks[b].register_forward_hook(token_hook(i)) for i, b in enumerate(TOKEN_BLOCKS) if b in token_blocks]
     if method == "feat":
         handles += [model.blocks[b].register_forward_hook(block_hook(i)) for i, b in enumerate(FEATURE_BLOCKS)]
     model.forward = recording_forward
