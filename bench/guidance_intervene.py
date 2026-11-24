@@ -24,6 +24,8 @@ guidance along the targeted component, that is, guidance beyond w = 1. With exce
   late_w     guidance scale w instead of W for s_t >= EARLY_END (after the window); combinable with the parts above.
   Modifiers of the token part: tfeatlate_L (also apply it after the window, at strength L), tend_t (token window s_t < t
   instead of EARLY_END), trank_k (top k of the TOKEN_RANK directions), tfrom_b (only blocks b and later of TOKEN_BLOCKS).
+  cond_L can also join a combination (e.g. cond_1+late_6).
+  smooth_d   replace the step at EARLY_END with a cosine ramp over EARLY_END +- d, for every damping strength and for late_w.
   A '+' joins at most one of score/wrongclass/freq, one of tfeat/tfeatwrong and one late_w, e.g. tfeat_1.3333+score_1+late_5.
 
 score, freq and scalar act on the 3 guided channels only; cond and feat change f_cond, so they also reach channel 3.
@@ -42,7 +44,7 @@ Where each method acts, from the outside of the network inward:
   cond                              before the blocks, on the class embedding that conditions every block (condition space)
   feat                              inside the network, on the outputs of blocks 13-23 (feature space)
 """
-import argparse, json, sys, time
+import argparse, json, math, sys, time
 from pathlib import Path
 
 import numpy as np
@@ -215,9 +217,20 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
     parts = dict(parse(part) for part in condition.split("+"))
     LATENT, TOKEN = ("score", "wrongclass", "freq"), ("tfeat", "tfeatwrong")
     TOKEN_MODIFIERS = ("tfeatlate", "tend", "trank", "tfrom")  # change how the token part acts; need tfeat or tfeatwrong
-    assert len(parts) == 1 or (set(parts) <= {*LATENT, *TOKEN, *TOKEN_MODIFIERS, "late"} and sum(m in LATENT for m in parts) <= 1
-                               and sum(m in TOKEN for m in parts) <= 1), \
-        f"only one score-space part, one token part and a late part can be combined: {condition}"
+    assert len(parts) == 1 or (set(parts) <= {*LATENT, *TOKEN, *TOKEN_MODIFIERS, "late", "cond", "smooth"}
+                               and sum(m in LATENT for m in parts) <= 1 and sum(m in TOKEN for m in parts) <= 1), \
+        f"only one score-space part, one token part, cond, late and smooth can be combined: {condition}"
+    # smooth_<d>: replace the step at EARLY_END by a cosine ramp over EARLY_END +- d. Every damping strength is scaled by the
+    # gate g(t), which falls from 1 to 0 across the ramp, and the guidance scale moves from W to the late value as
+    # W g + w_late (1 - g). The ramp is symmetric about EARLY_END, so the total damping over time is unchanged.
+    ramp = parts.get("smooth")
+    assert ramp is None or not {"tend", "tfeatlate"} & set(parts), f"smooth replaces tend and tfeatlate: {condition}"
+
+    def gate(t):
+        if ramp is None:
+            return 1.0 if t < EARLY_END else 0.0  # the plain step
+        x = (t - (EARLY_END - ramp)) / (2 * ramp)  # 0 where the ramp starts, 1 where it ends
+        return 1.0 if x <= 0 else 0.0 if x >= 1 else 0.5 * (1 + math.cos(math.pi * x))
     method, strength = next(iter(parts.items())) if len(parts) == 1 else (None, None)  # single-method branches below
     latent_method = next((m for m in LATENT if m in parts), None)
     token_method = next((m for m in TOKEN if m in parts), None)
@@ -231,7 +244,7 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
     x = torch.cat([z, z], 0).to(device)
     y = torch.tensor(LABELS + [NULL_CLASS] * n, device=device)
     # State shared between the sampler wrapper and the hooks: whether this step is in the window, and the raw branch outputs.
-    state = dict(active=False, last=None, t=0.0)
+    state = dict(active=False, last=None, t=0.0, g=0.0)
     excess = (W - 1) / W  # the share of the class signal that cond and feat remove at strength 1
 
     basis = None
@@ -252,10 +265,12 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
 
     def guided(xb, tb, **kwargs):
         # The function the sampler integrates. It sets the window flag first, because the hooks inside the forward pass read it.
-        state["active"] = float(tb[0]) < EARLY_END
         state["t"] = float(tb[0])
-        if "late" in parts and not state["active"]:
-            kwargs["cfg_scale"] = parts["late"]  # late_<w>: guidance scale w from EARLY_END to the end, W before
+        state["g"] = gate(state["t"])
+        state["active"] = state["g"] > 0  # without smooth: exactly s_t < EARLY_END
+        if "late" in parts and state["g"] < 1:
+            # late_<w>: guidance scale w after the window, W before (g = 0 gives exactly w, as with the plain step).
+            kwargs["cfg_scale"] = W * state["g"] + parts["late"] * (1 - state["g"])
         if method == "w1" or (method == "scalar" and state["active"]):
             # w1: no guidance at any step. scalar: a smaller w during the window, the same in every direction.
             kwargs["cfg_scale"] = 1.0 if method == "w1" else 1 + (W - 1) * (1 - strength)
@@ -271,14 +286,14 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
                 flat = delta.reshape(n, -1)
                 part = torch.einsum("nk,nkd->nd", torch.einsum("nkd,nd->nk", basis, flat), basis).reshape(delta.shape)
             out = out.clone()
-            out[:n, :GUIDED_CHANNELS] -= (W - 1) * parts[latent_method] * part  # excess guidance loses L * part
+            out[:n, :GUIDED_CHANNELS] -= (W - 1) * (parts[latent_method] * state["g"]) * part  # excess guidance loses L g * part
         return out
 
     def embed_hook(_module, _inputs, emb):  # rows [:n] are class embeddings, rows [n:] the null embedding
         # cond: same arithmetic as Intervention.install, so the two code paths give bit-identical samples.
         if not state["active"]:
             return None
-        alpha = 1 - strength * excess
+        alpha = 1 - parts["cond"] * state["g"] * excess
         return torch.cat([emb[n:] + alpha * (emb[:n] - emb[n:]), emb[n:]], 0)
 
     def block_hook(index):
@@ -309,7 +324,11 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
         def hook(_module, _inputs, out):
             # Inside the token window: the token part's strength. After the early window: tfeatlate's strength, if given, so
             # that a late guidance boost cannot push the class-shared directions back. In between (tend < t < EARLY_END): off.
-            if state["t"] < token_end:
+            if ramp is not None:
+                if state["g"] == 0:
+                    return None
+                s = parts[token_method] * state["g"]
+            elif state["t"] < token_end:
                 s = parts[token_method]
             elif not state["active"] and "tfeatlate" in parts:
                 s = parts["tfeatlate"]
@@ -323,7 +342,7 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
 
     # Register only the hooks the chosen method needs; the score-space methods need none.
     handles = []
-    if method == "cond":
+    if "cond" in parts:
         handles.append(model.y_embedder.register_forward_hook(embed_hook))
     if method == "bcond":
         # strength holds one value per block group, then one for the final layer.
