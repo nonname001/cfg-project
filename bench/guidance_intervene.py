@@ -26,6 +26,14 @@ guidance along the targeted component, that is, guidance beyond w = 1. With exce
   instead of EARLY_END), trank_k (top k of the TOKEN_RANK directions), tfrom_b (only blocks b and later of TOKEN_BLOCKS).
   cond_L can also join a combination (e.g. cond_1+late_6).
   smooth_d   replace the step at EARLY_END with a cosine ramp over EARLY_END +- d, for every damping strength and for late_w.
+  cads_s     CADS: noisy class embedding, pure noise (rescaled) before s_t = 0.1, annealed to clean by 0.4; s = noise scale.
+  cnoise_s   class embedding + s * std * fresh noise during the window; the class signal keeps its full strength.
+  tshuffle_L as tfeat, but the subspace part is replaced by a seed-specific rotation of itself within the subspace.
+  wall_w     guidance scale w at every step.
+  slg_s      skip-layer guidance (blocks slgfrom_b..slgto_b, default 10-12, bypassed): f += s (f_cond - f_cond_skip) at every
+             step. One extra forward pass on the conditional rows; cannot be combined with hook-based parts.
+  mcond_L    damp the class dependence of adaLN modulation chunks (mchunks_<bitmask over MOD_CHUNKS>, default all) in
+             blocks mfrom_<b>..mto_<b> (default all) during the window.
   A '+' joins at most one of score/wrongclass/freq, one of tfeat/tfeatwrong and one late_w, e.g. tfeat_1.3333+score_1+late_5.
 
 score, freq and scalar act on the 3 guided channels only; cond and feat change f_cond, so they also reach channel 3.
@@ -61,6 +69,8 @@ LOW_CUTOFF = 4  # low-pass radius for freq, in cycles per 32-pixel latent (Nyqui
 FEATURE_BLOCKS = list(range(13, 24))  # the later blocks, where w = 4 lowered effective rank in the 16-seed run
 TOKEN_BLOCKS = list(range(8, 16))  # tfeat's blocks: where cond - uncond is most shared across seeds (cond_tokens.py)
 TOKEN_RANK = 16
+CADS_LO, CADS_HI = 0.1, 0.4  # cads: pure noise conditioning before CADS_LO, annealed to the clean embedding by CADS_HI
+MOD_CHUNKS = ["shift_msa", "scale_msa", "gate_msa", "shift_mlp", "scale_mlp", "gate_mlp"]  # adaLN_modulation output order
 BLOCK_GROUPS = [range(0, 8), range(8, 16), range(16, 24)]  # bcond's groups; the final layer has its own strength
 # The conditions the report's intervention table uses (score_0.5 also appears in its shuffled-push comparison).
 CONDITIONS = ["w1", "w4", "scalar_1", "score_0.5", "score_1", "freq_1", "cond_0.5", "cond_1", "feat_1", "wrongclass_1"]
@@ -215,9 +225,13 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
     velocity, and on the guidance scale after the window), so they compose.
     """
     parts = dict(parse(part) for part in condition.split("+"))
-    LATENT, TOKEN = ("score", "wrongclass", "freq"), ("tfeat", "tfeatwrong")
+    LATENT, TOKEN = ("score", "wrongclass", "freq"), ("tfeat", "tfeatwrong", "tshuffle")
+    EMBED = ("cond", "cads", "cnoise")  # act on the class embedding
+    MOD = ("mcond", "mchunks", "mfrom", "mto")  # mcond_L damps chosen adaLN modulation chunks (bitmask mchunks) in blocks mfrom..mto
     TOKEN_MODIFIERS = ("tfeatlate", "tend", "trank", "tfrom")  # change how the token part acts; need tfeat or tfeatwrong
-    assert len(parts) == 1 or (set(parts) <= {*LATENT, *TOKEN, *TOKEN_MODIFIERS, "late", "cond", "smooth"}
+    SLG = ("slg", "slgfrom", "slgto")  # skip-layer guidance: needs the plain forward, so no hook-based parts with it
+    assert not ("slg" in parts and set(parts) & {*TOKEN, *EMBED, *MOD}), f"slg cannot be combined with hook-based parts: {condition}"
+    assert len(parts) == 1 or (set(parts) <= {*LATENT, *TOKEN, *TOKEN_MODIFIERS, *EMBED, *MOD, *SLG, "late", "smooth", "wall"}
                                and sum(m in LATENT for m in parts) <= 1 and sum(m in TOKEN for m in parts) <= 1), \
         f"only one score-space part, one token part, cond, late and smooth can be combined: {condition}"
     # smooth_<d>: replace the step at EARLY_END by a cosine ramp over EARLY_END +- d. Every damping strength is scaled by the
@@ -245,6 +259,12 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
     y = torch.tensor(LABELS + [NULL_CLASS] * n, device=device)
     # State shared between the sampler wrapper and the hooks: whether this step is in the window, and the raw branch outputs.
     state = dict(active=False, last=None, t=0.0, g=0.0)
+    # Seed-determined randomness for cads, cnoise and tshuffle, so every condition is reproducible from its seed alone.
+    noise_gen = torch.Generator().manual_seed(seed + 7919)
+    if token_method == "tshuffle":
+        # One random rotation per sample inside its class's token subspace, fixed over steps, tokens and blocks.
+        q, r = torch.linalg.qr(torch.randn(n, token_rank, token_rank, generator=torch.Generator().manual_seed(seed + 104729)))
+        rotation = (q * torch.sign(torch.diagonal(r, dim1=-2, dim2=-1))[:, None, :]).to(device)  # Haar-distributed
     excess = (W - 1) / W  # the share of the class signal that cond and feat remove at strength 1
 
     basis = None
@@ -254,7 +274,7 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
         basis = tables["latent"] if latent_method == "score" else tables["latent"].roll(-1, 0)
     if token_method:
         # tfeatwrong: the same class shift for the token bases, whose class axis is 1: (blocks, classes, rank, 1024).
-        token_basis = tables["token"] if token_method == "tfeat" else tables["token"].roll(-1, 1)
+        token_basis = tables["token"].roll(-1, 1) if token_method == "tfeatwrong" else tables["token"]
 
     forward = model.forward
 
@@ -268,6 +288,8 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
         state["t"] = float(tb[0])
         state["g"] = gate(state["t"])
         state["active"] = state["g"] > 0  # without smooth: exactly s_t < EARLY_END
+        if "wall" in parts:
+            kwargs["cfg_scale"] = parts["wall"]  # wall_<w>: guidance scale w at every step (late_<w> still overrides after)
         if "late" in parts and state["g"] < 1:
             # late_<w>: guidance scale w after the window, W before (g = 0 gives exactly w, as with the plain step).
             kwargs["cfg_scale"] = W * state["g"] + parts["late"] * (1 - state["g"])
@@ -287,14 +309,54 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
                 part = torch.einsum("nk,nkd->nd", torch.einsum("nkd,nd->nk", basis, flat), basis).reshape(delta.shape)
             out = out.clone()
             out[:n, :GUIDED_CHANNELS] -= (W - 1) * (parts[latent_method] * state["g"]) * part  # excess guidance loses L g * part
+        if "slg" in parts:
+            # Skip-layer guidance: push away from the conditional prediction of a degraded model (blocks slgfrom..slgto
+            # bypassed), f += s (f_cond - f_cond_skip). Class-agnostic quality guidance; costs one extra pass on n rows.
+            lo, hi = int(parts.get("slgfrom", 10)), int(parts.get("slgto", 12))
+            skips = [model.blocks[b].register_forward_hook(lambda _m, inputs, _o: inputs[0]) for b in range(lo, hi + 1)]
+            try:
+                f_skip = forward(xb[:n], tb[:n], kwargs["y"][:n])
+            finally:
+                for h in skips:
+                    h.remove()
+            out = out.clone()
+            out[:n, :GUIDED_CHANNELS] += parts["slg"] * (state["last"][:n, :GUIDED_CHANNELS] - f_skip[:, :GUIDED_CHANNELS])
         return out
 
     def embed_hook(_module, _inputs, emb):  # rows [:n] are class embeddings, rows [n:] the null embedding
-        # cond: same arithmetic as Intervention.install, so the two code paths give bit-identical samples.
+        y, null, changed = emb[:n], emb[n:], False
+        if "cond" in parts and state["active"]:
+            # cond: same arithmetic as Intervention.install, so the two code paths give bit-identical samples.
+            y, changed = null + (1 - parts["cond"] * state["g"] * excess) * (y - null), True
+        if "cads" in parts and state["t"] < CADS_HI:
+            # CADS (Sadat et al. 2024): y' = sqrt(gamma) y + s sqrt(1 - gamma) eps, then rescaled to y's per-sample mean and
+            # std (psi = 1). gamma rises from 0 at CADS_LO to 1 at CADS_HI; fresh noise every step. eps is scaled by y's std so
+            # that s is relative to the embedding's own size.
+            gamma = min(1.0, max(0.0, (state["t"] - CADS_LO) / (CADS_HI - CADS_LO)))
+            eps = torch.randn(y.shape, generator=noise_gen).to(y.device)
+            mu, sd = y.mean(1, keepdim=True), y.std(1, keepdim=True)
+            mixed = gamma ** 0.5 * y + parts["cads"] * (1 - gamma) ** 0.5 * sd * eps
+            y, changed = (mixed - mixed.mean(1, keepdim=True)) / mixed.std(1, keepdim=True) * sd + mu, True
+        if "cnoise" in parts and state["active"]:
+            # cnoise: a fresh random offset to the class embedding at every step of the window, s times its std; the class
+            # signal itself is kept at full strength.
+            eps = torch.randn(y.shape, generator=noise_gen).to(y.device)
+            y, changed = y + parts["cnoise"] * state["g"] * y.std(1, keepdim=True) * eps, True
+        return torch.cat([y, null], 0) if changed else None
+
+    def modulation_hook(_module, _inputs, mod):
+        # mcond: mod = adaLN_modulation(c), (2n, 6 * width): the only route by which the class reaches a block. Selected
+        # chunks of the conditional rows move toward the null rows' values, as cond does to the embedding.
         if not state["active"]:
             return None
-        alpha = 1 - parts["cond"] * state["g"] * excess
-        return torch.cat([emb[n:] + alpha * (emb[:n] - emb[n:]), emb[n:]], 0)
+        width = mod.shape[1] // len(MOD_CHUNKS)
+        alpha = 1 - parts["mcond"] * state["g"] * excess
+        cond = mod[:n].clone()
+        for j in range(len(MOD_CHUNKS)):
+            if int(parts.get("mchunks", 63)) >> j & 1:
+                sl = slice(j * width, (j + 1) * width)
+                cond[:, sl] = mod[n:, sl] + alpha * (mod[:n, sl] - mod[n:, sl])
+        return torch.cat([cond, mod[n:]], 0)
 
     def block_hook(index):
         # feat: index is the position in FEATURE_BLOCKS (0-10), which is how feature_basis is indexed, not the block number.
@@ -336,14 +398,21 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
                 return None
             u = token_basis[index][:, :token_rank]  # (8 classes, rank, 1024); rows are sorted by singular value
             d = out[:n] - out[n:]  # (n, tokens, 1024)
-            part = torch.einsum("ntk,nkd->ntd", torch.einsum("ntd,nkd->ntk", d, u), u)
+            coords = torch.einsum("ntd,nkd->ntk", d, u)
+            part = torch.einsum("ntk,nkd->ntd", coords, u)
+            if token_method == "tshuffle":
+                # Replace the subspace part by its rotated version instead of removing it: same size, seed-specific direction.
+                part = part - torch.einsum("ntk,nkd->ntd", torch.einsum("ntk,njk->ntj", coords, rotation), u)
             return torch.cat([out[:n] - excess * s * part, out[n:]], 0)
         return hook
 
     # Register only the hooks the chosen method needs; the score-space methods need none.
     handles = []
-    if "cond" in parts:
+    if set(parts) & set(EMBED):
         handles.append(model.y_embedder.register_forward_hook(embed_hook))
+    if "mcond" in parts:
+        lo, hi = int(parts.get("mfrom", 0)), int(parts.get("mto", len(model.blocks) - 1))
+        handles += [model.blocks[b].adaLN_modulation.register_forward_hook(modulation_hook) for b in range(lo, hi + 1)]
     if method == "bcond":
         # strength holds one value per block group, then one for the final layer.
         for modules, s in zip([[model.blocks[b] for b in g] for g in BLOCK_GROUPS] + [[model.final_layer]], strength):
