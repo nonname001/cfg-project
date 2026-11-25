@@ -32,6 +32,8 @@ guidance along the targeted component, that is, guidance beyond w = 1. With exce
   wall_w     guidance scale w at every step.
   slg_s      skip-layer guidance (blocks slgfrom_b..slgto_b, default 10-12, bypassed): f += s (f_cond - f_cond_skip) at every
              step. One extra forward pass on the conditional rows; cannot be combined with hook-based parts.
+  hcond_L    with htop_k: damp the class dependence of the top k heads of --head-ranking (their outputs before attn.proj)
+             during the window.
   mcond_L    damp the class dependence of adaLN modulation chunks (mchunks_<bitmask over MOD_CHUNKS>, default all) in
              blocks mfrom_<b>..mto_<b> (default all) during the window.
   A '+' joins at most one of score/wrongclass/freq, one of tfeat/tfeatwrong and one late_w, e.g. tfeat_1.3333+score_1+late_5.
@@ -227,7 +229,7 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
     parts = dict(parse(part) for part in condition.split("+"))
     LATENT, TOKEN = ("score", "wrongclass", "freq"), ("tfeat", "tfeatwrong", "tshuffle")
     EMBED = ("cond", "cads", "cnoise")  # act on the class embedding
-    MOD = ("mcond", "mchunks", "mfrom", "mto")  # mcond_L damps chosen adaLN modulation chunks (bitmask mchunks) in blocks mfrom..mto
+    MOD = ("mcond", "mchunks", "mfrom", "mto", "hcond", "htop")  # hcond_L: damp the top htop_k heads' class dependence  # mcond_L damps chosen adaLN modulation chunks (bitmask mchunks) in blocks mfrom..mto
     TOKEN_MODIFIERS = ("tfeatlate", "tend", "trank", "tfrom")  # change how the token part acts; need tfeat or tfeatwrong
     SLG = ("slg", "slgfrom", "slgto")  # skip-layer guidance: needs the plain forward, so no hook-based parts with it
     assert not ("slg" in parts and set(parts) & {*TOKEN, *EMBED, *MOD}), f"slg cannot be combined with hook-based parts: {condition}"
@@ -344,6 +346,22 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
             y, changed = y + parts["cnoise"] * state["g"] * y.std(1, keepdim=True) * eps, True
         return torch.cat([y, null], 0) if changed else None
 
+    def head_hook(head_list):
+        # hcond: in the conditional rows, each listed head's output (its 64 channels of the input to attn.proj) moves toward
+        # the null rows' output for the same head, by the same rule as cond.
+        def hook(module, inputs):
+            if not state["active"]:
+                return None
+            zz = inputs[0]
+            hd = zz.shape[-1] // model.blocks[0].attn.num_heads
+            alpha = 1 - parts["hcond"] * state["g"] * excess
+            cond = zz[:n].clone()
+            for h in head_list:
+                sl = slice(h * hd, (h + 1) * hd)
+                cond[..., sl] = zz[n:, :, sl] + alpha * (zz[:n, :, sl] - zz[n:, :, sl])
+            return (torch.cat([cond, zz[n:]], 0),)
+        return hook
+
     def modulation_hook(_module, _inputs, mod):
         # mcond: mod = adaLN_modulation(c), (2n, 6 * width): the only route by which the class reaches a block. Selected
         # chunks of the conditional rows move toward the null rows' values, as cond does to the embedding.
@@ -410,6 +428,10 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
     handles = []
     if set(parts) & set(EMBED):
         handles.append(model.y_embedder.register_forward_hook(embed_hook))
+    if "hcond" in parts:
+        ranked = tables["heads"][: int(parts["htop"])]  # [(block, head), ...], most collapse-specific first
+        for b in sorted({b for b, _ in ranked}):
+            handles.append(model.blocks[b].attn.proj.register_forward_pre_hook(head_hook([h for bb, h in ranked if bb == b])))
     if "mcond" in parts:
         lo, hi = int(parts.get("mfrom", 0)), int(parts.get("mto", len(model.blocks) - 1))
         handles += [model.blocks[b].adaLN_modulation.register_forward_hook(modulation_hook) for b in range(lo, hi + 1)]
@@ -448,6 +470,7 @@ def main():
     p.add_argument("--steps", type=int, default=50)
     p.add_argument("--device", default="mps")
     p.add_argument("--token-tables", help="tfeat bases; with --build-token-tables, where to write them")
+    p.add_argument("--head-ranking", help="JSON list of [block, head], most collapse-specific first (hcond)")
     p.add_argument("--build-token-tables", action="store_true", help="fit tfeat bases from the --calibration token run")
     a = p.parse_args()
     if a.build_tables:
@@ -475,6 +498,9 @@ def main():
         assert not set(a.seeds) & set(token["seeds"].tolist()), "evaluation seeds overlap the token-table calibration seeds"
         tables["token"] = torch.from_numpy(token["token_basis"]).to(a.device)
         manifest.update(token_tables=a.token_tables, token_tables_sha256=sha256(a.token_tables), token_blocks=TOKEN_BLOCKS, token_rank=TOKEN_RANK)
+    if a.head_ranking:  # only hcond runs carry these keys
+        tables["heads"] = [tuple(x) for x in json.loads(Path(a.head_ranking).read_text())]
+        manifest.update(head_ranking=a.head_ranking, head_ranking_sha256=sha256(a.head_ranking))
     path = out / "manifest.json"
     if path.exists():  # resuming: settings must match the samples already saved
         assert json.loads(path.read_text()) == manifest, "settings differ from the existing manifest in --out"
