@@ -693,6 +693,10 @@ evaluation seeds (16–47; seeds 16–23 were used to screen the mcond variants,
 - **Lower w and the circuit-based shift damping are on the curve.** Their edge in 12.4 came from the coarse 50-image
   reference. (Before the curve was corrected to run to w4 rather than stop at cond 0.5, score damping's position above it
   had also been hidden.)
+- **Adding anything to score damping gives its advantage back.** tfeat + score (precision ret. 0.42), with late w = 6
+  (0.66) or with the smooth ramp (0.61) all add 0.13–0.31 DINO over score damping but cost 0.25–0.49 precision retention,
+  which puts them on the curve (DINO −0.04 to −0.00 vs curve; `paired_tests/train_ref_score_combos_16_47.txt`).
+  Repulsion + score damping falls below it (seeds 16–31: DINO −0.23).
 - **Seed-set variation is large:** score damping's precision retention is 0.81 on seeds 16–31 but 1.00 on 24–47, and w = 3's
   0.98 vs 0.77 (`paired_tests/train_ref_pooled_16_47.txt`). Single 16-seed comparisons of fidelity are not reliable.
 

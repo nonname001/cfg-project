@@ -1,0 +1,19 @@
+score_1                        vs cond curve: lay +0.819 [+0.687,+0.962], dino +0.083 [+0.034,+0.132], clip +0.102 [+0.037,+0.173], vdino +0.062 [+0.026,+0.102], vclip +0.094 [+0.041,+0.155]
+tfeat_1.3333+score_1           vs cond curve: lay +0.028 [-0.057,+0.137], dino -0.038 [-0.107,+0.034], clip -0.130 [-0.222,-0.027], vdino -0.034 [-0.094,+0.035], vclip -0.128 [-0.221,-0.021]
+tfeat_1.3333+score_1+late_6    vs cond curve: lay +0.442 [+0.128,+0.826], dino -0.003 [-0.151,+0.157], clip +0.078 [-0.157,+0.311], vdino -0.007 [-0.124,+0.116], vclip +0.082 [-0.136,+0.299]
+tfeat_1.3333+score_1+late_6+smooth_0.1 vs cond curve: lay +0.259 [+0.043,+0.700], dino -0.006 [-0.110,+0.195], clip +0.020 [-0.157,+0.335], vdino -0.018 [-0.112,+0.142], vclip +0.024 [-0.152,+0.320]
+cond_1+late_6+smooth_0.1       vs cond curve: lay +0.047 [-0.022,+0.160], dino -0.080 [-0.123,-0.019], clip -0.044 [-0.120,+0.069], vdino -0.082 [-0.121,-0.020], vclip -0.050 [-0.128,+0.067]
+tfeat_1.3333                   vs cond curve: lay -0.352 [-0.592,+0.087], dino -0.001 [-0.115,+0.187], clip -0.079 [-0.267,+0.213], vdino -0.006 [-0.110,+0.145], vclip -0.072 [-0.256,+0.201]
+tfeat_1.3333+score_1 - score_1                lay +0.248 [+0.180,+0.306], dino +0.305 [+0.260,+0.351], clip +0.427 [+0.362,+0.491], vdino +0.263 [+0.223,+0.305], vclip +0.412 [+0.355,+0.468], precRet -0.487 [-0.635,-0.339]
+tfeat_1.3333+score_1+late_6 - score_1         lay +0.238 [+0.173,+0.297], dino +0.129 [+0.086,+0.174], clip +0.298 [+0.239,+0.364], vdino +0.099 [+0.067,+0.134], vclip +0.286 [+0.236,+0.341], precRet -0.251 [-0.386,-0.121]
+tfeat_1.3333+score_1+late_6+smooth_0.1 - score_1 lay +0.202 [+0.129,+0.266], dino +0.194 [+0.145,+0.239], clip +0.345 [+0.283,+0.414], vdino +0.144 [+0.108,+0.180], vclip +0.328 [+0.279,+0.385], precRet -0.302 [-0.463,-0.152]
+w4                                         precRet 1.00 dino 0.00 clip 0.00 vendi_dino 0.00 vendi_clip 0.00
+cond_0.5                                   precRet 0.65 dino 0.16 clip 0.23 vendi_dino 0.11 vendi_clip 0.21
+cond_0.75                                  precRet 0.66 dino 0.34 clip 0.50 vendi_dino 0.24 vendi_clip 0.45
+cond_1                                     precRet 0.38 dino 0.50 clip 0.77 vendi_dino 0.40 vendi_clip 0.74
+score_1                                    precRet 0.91 dino 0.12 clip 0.16 vendi_dino 0.09 vendi_clip 0.14
+tfeat_1.3333                               precRet 0.62 dino 0.31 clip 0.39 vendi_dino 0.22 vendi_clip 0.35
+tfeat_1.3333+score_1                       precRet 0.42 dino 0.43 clip 0.59 vendi_dino 0.33 vendi_clip 0.55
+tfeat_1.3333+score_1+late_6                precRet 0.66 dino 0.25 clip 0.46 vendi_dino 0.17 vendi_clip 0.43
+tfeat_1.3333+score_1+late_6+smooth_0.1     precRet 0.61 dino 0.32 clip 0.50 vendi_dino 0.22 vendi_clip 0.47
+cond_1+late_6+smooth_0.1                   precRet 0.43 dino 0.38 clip 0.66 vendi_dino 0.29 vendi_clip 0.62

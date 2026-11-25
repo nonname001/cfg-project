@@ -143,3 +143,7 @@ Goal: more semantic diversity (DINO/CLIP recovery) at the same real-image fideli
   0.11 (+0.03 n.s.). Score damping is still the one method significantly above the curve, but modestly; precision varies a
   lot between 16-seed sets. Joint sampling re-scored with the training reference (paired_tests/train_ref_joint_16_31.txt):
   nothing above the curve. RESULTS.md 12.7 and the figure use the pooled numbers.
+- (later, 11/25) Score-damping combinations re-scored against the training reference, seeds 16-47 pooled
+  (paired_tests/train_ref_score_combos_16_47.txt; ~730 MB peak, 2 threads): tfeat+score 0.42 / DINO 0.43 (-0.04 vs curve,
+  CLIP -0.13*); +late_6 0.66 / 0.25 (-0.00); +late_6+smooth 0.61 / 0.32 (-0.01); cond_1+late_6+smooth 0.43 / 0.38 (-0.08*).
+  All on or below the curve; only score damping alone is above it.
