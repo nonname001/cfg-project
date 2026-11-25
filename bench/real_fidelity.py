@@ -16,10 +16,11 @@ Each metric also gets a retention, (M - M_w1) / (M_w4 - M_w1) (1 = as at w = 4, 
 resampling seeds, the same resample for every condition.
 
 usage: real_fidelity.py --fetch --real <dir>               download the 14 validation shards one at a time, keep the 400 images
+       real_fidelity.py --fetch-train --real <dir>         training split (~1,300 per class), embeddings only (~147 GB download)
        real_fidelity.py --embed --real <dir>               DINOv2 embeddings of the kept images -> <dir>/dino.npz
        real_fidelity.py --run <run> --real <dir>           -> <run>/real_fidelity.csv (needs guidance_intervene_eval.py --embed)
 """
-import argparse, io, sys, tempfile
+import argparse, io, sys, tempfile, time
 from pathlib import Path
 
 import numpy as np
@@ -104,9 +105,75 @@ def embed(real, device="mps"):
     np.savez(real / "dino.npz", dino=np.concatenate(feats).astype(np.float32), labels=np.array(labels))
 
 
+def fetch_train(real, device="mps", batch=64, reverse=False):
+    """ImageNet-1k training images of LABELS (~1,300 per class), embedded on the fly; only the embeddings are kept.
+
+    Each of the 294 shards is downloaded to a temporary folder, its matching rows are preprocessed and embedded exactly as in
+    embed() (center_crop_arr, 256 -> 224 bicubic, DINOv2), and the shard is deleted. Per-shard results go to <real>/shards/, so
+    a stopped fetch resumes; at the end they are merged into <real>/dino.npz.
+    """
+    import pyarrow as pa
+    import pyarrow.compute as pc
+    import pyarrow.parquet as pq
+    import torch
+    import torch.nn.functional as F
+    from PIL import Image
+    from huggingface_hub import hf_hub_download, list_repo_files
+    from guidance_embed import DINO, SIZE, encode, encoder
+    torch.set_grad_enabled(False)
+    dino = encoder(DINO, device, num_classes=0, img_size=SIZE)
+    shards = sorted(f for f in list_repo_files(REPO, repo_type="dataset") if f.startswith("data/train-"))
+    out = real / "shards"
+    out.mkdir(parents=True, exist_ok=True)
+    wanted = pa.array(LABELS)
+
+    def embed_batch(arrays):
+        image = torch.from_numpy(np.stack(arrays)).permute(0, 3, 1, 2).float().div(255).to(device)
+        return encode(dino, F.interpolate(image, size=SIZE, mode="bicubic", antialias=True).clamp(0, 1)).cpu().numpy()
+
+    for shard in (reversed(shards) if reverse else shards):  # a second worker can take the shards in reverse order
+        target = out / (Path(shard).stem + ".npz")
+        if target.exists():
+            continue
+        feats, labels = [], []
+        with tempfile.TemporaryDirectory() as tmp:
+            for attempt in range(5):  # transient transfer errors happen over a ~147 GB download; retry with a pause
+                try:
+                    parquet = pq.ParquetFile(hf_hub_download(REPO, shard, repo_type="dataset", local_dir=tmp))
+                    break
+                except Exception as error:
+                    print(f"retry {shard} ({attempt + 1}/5): {error}", flush=True)
+                    time.sleep(30)
+            else:
+                raise RuntimeError(f"could not download {shard}")
+            for group in range(parquet.metadata.num_row_groups):
+                lab = parquet.read_row_group(group, columns=["label"]).column("label")
+                keep = pc.is_in(lab, value_set=wanted)
+                if not pc.any(keep).as_py():
+                    continue
+                images = parquet.read_row_group(group, columns=["image"]).column("image").filter(keep).to_pylist()
+                arrays = [center_crop_arr(Image.open(io.BytesIO(im["bytes"])).convert("RGB")) for im in images]
+                for i in range(0, len(arrays), batch):
+                    feats.append(embed_batch(arrays[i:i + batch]))
+                labels += lab.filter(keep).to_pylist()
+        tmp = target.with_suffix(".tmp.npz")  # write then rename, so a parallel worker never sees a partial file
+        np.savez(tmp, dino=np.concatenate(feats).astype(np.float32) if feats else np.zeros((0, 768), np.float32),
+                 labels=np.array(labels, dtype=np.int64))
+        tmp.rename(target)
+        print("done", shard, len(labels), flush=True)
+    if len([f for f in out.glob("*.npz") if not f.name.endswith(".tmp.npz")]) < len(shards):
+        return  # the other worker is still running; whichever finishes last merges
+    parts = [np.load(f) for f in sorted(out.glob("*.npz")) if not f.name.endswith(".tmp.npz")]
+    dino_all = np.concatenate([p["dino"] for p in parts]); labels_all = np.concatenate([p["labels"] for p in parts])
+    np.savez(real / "dino.npz", dino=dino_all, labels=labels_all)
+    print({c: int((labels_all == c).sum()) for c in LABELS})
+
+
 def knn_radius(x, k=K):
     """Distance from each row of x to its k-th nearest other row."""
-    d = np.linalg.norm(x[:, None] - x[None], axis=-1)
+    # ||a - b||^2 = ||a||^2 + ||b||^2 - 2 a.b: an (N, N) matrix instead of an (N, N, D) broadcast (10 GB at N = 1300, D = 768).
+    sq = (x ** 2).sum(1)
+    d = np.sqrt(np.clip(sq[:, None] + sq[None] - 2 * x @ x.T, 0, None))
     return np.sort(d, axis=1)[:, k]  # column 0 is the point itself
 
 
@@ -171,6 +238,8 @@ def main():
     p.add_argument("--real", required=True)
     p.add_argument("--fetch", action="store_true")
     p.add_argument("--embed", action="store_true")
+    p.add_argument("--fetch-train", action="store_true", help="embed the training split of LABELS into <real>/dino.npz")
+    p.add_argument("--reverse", action="store_true", help="with --fetch-train: take the shards in reverse order (2nd worker)")
     p.add_argument("--run")
     a = p.parse_args()
     real = Path(a.real)
@@ -178,6 +247,8 @@ def main():
         fetch(real)
     if a.embed:
         embed(real)
+    if a.fetch_train:
+        fetch_train(real, reverse=a.reverse)
     if a.run:
         for row in evaluate(Path(a.run), real):
             print(row["condition"].ljust(22), {k: round(row[k], 3) for k in ("precision", "precision_retention", "recall", "fd")}, flush=True)

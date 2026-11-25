@@ -62,6 +62,16 @@ def pairwise_cos_distance(x):
     return float((1 - (u[i] * u[j]).sum(1)).mean())  # cosine distance = 1 - cosine similarity
 
 
+def vendi(x):
+    """x: (N, D). Vendi score (Friedman & Dieng 2023) with cosine similarity: exp of the entropy of the eigenvalues of K / N,
+    K_ij = cos(x_i, x_j). The effective number of distinct samples: 1 if all are identical, N if all are orthogonal. Unlike the
+    mean pairwise distance, it rewards spreading over many directions rather than a few far-apart pairs."""
+    u = unit(x)
+    mu = np.clip(np.linalg.eigvalsh(u @ u.T / len(x)), 0, None)  # K / N is PSD with trace 1; clip rounding below zero
+    mu = mu[mu > 0]
+    return float(np.exp(-(mu * np.log(mu)).sum()))
+
+
 def svd_basis(x):
     """x: (rows, D) already centered. Returns singular values and right singular vectors, using the small Gram matrix."""
     # Here rows (16) is far smaller than D (1024), so a full SVD of x would be wasteful. If x = U S V^T, then x x^T = U S^2 U^T:

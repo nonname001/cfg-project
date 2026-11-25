@@ -1,0 +1,14 @@
+score_1                        vs cond curve: lay +0.933 [+0.843,+0.989], dino +0.110 [+0.082,+0.140], clip +0.141 [+0.098,+0.179], vdino +0.083 [+0.057,+0.110], vclip +0.129 [+0.092,+0.163]
+wall_3                         vs cond curve: lay -0.109 [-0.276,+0.062], dino -0.001 [-0.046,+0.038], clip -0.018 [-0.084,+0.055], vdino -0.003 [-0.038,+0.030], vclip -0.020 [-0.080,+0.044]
+mcond_1.3333+mchunks_9         vs cond curve: lay -0.233 [-0.462,-0.034], dino +0.025 [-0.030,+0.073], clip +0.022 [-0.073,+0.105], vdino +0.014 [-0.033,+0.052], vclip +0.014 [-0.069,+0.087]
+mcond_1.3333+mchunks_8         vs cond curve: lay -0.241 [-0.406,-0.079], dino +0.007 [-0.036,+0.046], clip +0.015 [-0.061,+0.092], vdino -0.003 [-0.040,+0.028], vclip +0.008 [-0.058,+0.078]
+mcond_1.3333+mchunks_27        vs cond curve: lay -0.526 [-0.797,-0.185], dino -0.052 [-0.210,+0.111], clip -0.152 [-0.394,+0.090], vdino -0.047 [-0.177,+0.080], vclip -0.144 [-0.373,+0.079]
+score_1 - wall_3                              lay +0.722 [+0.680,+0.762], dino +0.035 [+0.008,+0.060], clip +0.030 [-0.020,+0.075], vdino +0.020 [+0.001,+0.042], vclip +0.031 [-0.014,+0.073], precRet +0.236 [+0.103,+0.366]
+mcond_1.3333+mchunks_9 - wall_3               lay -0.121 [-0.148,-0.095], dino +0.027 [+0.003,+0.051], clip +0.043 [+0.010,+0.080], vdino +0.017 [+0.001,+0.034], vclip +0.037 [+0.009,+0.071], precRet -0.001 [-0.133,+0.138]
+cond_0.5                                   precRet 0.61 dino 0.14 clip 0.23 vendi_dino 0.11 vendi_clip 0.21
+cond_0.75                                  precRet 0.57 dino 0.33 clip 0.53 vendi_dino 0.24 vendi_clip 0.48
+cond_1                                     precRet 0.34 dino 0.51 clip 0.83 vendi_dino 0.42 vendi_clip 0.79
+score_1                                    precRet 1.00 dino 0.12 clip 0.15 vendi_dino 0.08 vendi_clip 0.14
+wall_3                                     precRet 0.77 dino 0.08 clip 0.12 vendi_dino 0.06 vendi_clip 0.10
+mcond_1.3333+mchunks_9                     precRet 0.77 dino 0.11 clip 0.17 vendi_dino 0.08 vendi_clip 0.14
+mcond_1.3333+mchunks_27                    precRet 0.58 dino 0.21 clip 0.27 vendi_dino 0.15 vendi_clip 0.24

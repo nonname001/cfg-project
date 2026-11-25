@@ -1,0 +1,6 @@
+cond_0.5                                   precRet 0.84 dino 0.14 clip 0.23 vendi_dino 0.11 vendi_clip 0.21
+cond_0.75                                  precRet 0.71 dino 0.33 clip 0.53 vendi_dino 0.24 vendi_clip 0.48
+cond_1                                     precRet 0.53 dino 0.51 clip 0.83 vendi_dino 0.42 vendi_clip 0.79
+wall_3                                     precRet 0.95 dino 0.08 clip 0.12 vendi_dino 0.06 vendi_clip 0.10
+mcond_1.3333+mchunks_8                     precRet 0.98 dino 0.07 clip 0.11 vendi_dino 0.04 vendi_clip 0.09
+mcond_1.3333+mchunks_9                     precRet 0.95 dino 0.11 clip 0.17 vendi_dino 0.08 vendi_clip 0.14

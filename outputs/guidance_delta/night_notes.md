@@ -99,3 +99,41 @@ Goal: more semantic diversity (DINO/CLIP recovery) at the same real-image fideli
   top 8 heads: precision 1.07, DINO 0.02, CLIP 0.02 (barely does anything); top 32: 1.00 / 0.07 / 0.08 (vs w=3: DINO -0.02,
   CLIP -0.07, n.s.; layout -0.30*); top 64: 0.90 / 0.08 / 0.09 (vs cond curve DINO -0.13). No better than lowering w, so no
   held-out run. Consistent with the analysis: no head is collapse-specific enough.
+
+# Session 3 (2026-11-25, from 00:36)
+- Vendi (cosine, DINO and CLIP features) added to guidance_intervene_eval.py, paired_vs_cond.py and points.py. Rerun of the
+  key comparisons (paired_tests/vendi_*.txt): Vendi agrees with the pairwise-distance measures everywhere (same signs, similar
+  sizes, same significance); no conclusion changes.
+- CORRECTION: with w4 on the curve, score damping alone is above the condition-damping curve on fresh seeds (32-47: DINO
+  +0.13 [+0.07,+0.16], Vendi DINO +0.11, precision ret. 1.00). Earlier fresh-seed "vs curve" numbers were computed before the
+  w4 fix and clamped at cond_0.5. Held out 24-47 (paired_tests/score_vs_wall3_24_47.txt): score_1 precision ret. 0.98, DINO
+  0.12, CLIP 0.15, layout +0.96 vs w4. vs w=3: DINO +0.04 [+0.01,+0.06], layout +0.72, precision +0.03 (n.s.). vs shift damping
+  (mchunks_9): same semantics (+0.01), layout +0.84. => score damping matches or beats every later method at the high-fidelity
+  end; the circuit method's small gain over w=3 is matched by it.
+- Fetching the ImageNet training split for these 8 classes (embeddings only) into outputs/real_imagenet_train/.
+- Joint sampling (`bench/joint_sample.py`): all seeds of a group sampled together; during s_t < 0.3, samples of a class repel
+  each other (RBF kernel on predicted clean latents, median bandwidth; push = s * ||Delta_i|| along the repulsion direction).
+  Check: joint plain CFG is bit-identical to the per-seed w4 samples. Screening rep_1, rep_3, rep_1+score_1, rep_3+score_1 on
+  group 16-31; held-out group 32-47.
+- 02:30 Training-set fetch: the connection dropped to ~0.27 MB/s (Cloudflare and Hugging Face alike; ~4-5 MB/s earlier), so
+  the full 147 GB cannot finish. Shards are random slices of ImageNet, so a partial fetch is still an unbiased per-class
+  sample: keep both workers running and merge whatever has arrived at ~09:30 (recording the shard count).
+- 02:42 Joint latent repulsion, group 16-31 (paired_tests/joint_dev.txt): rep_1 precision 1.02, DINO 0.01, CLIP 0.05, layout
+  +0.37 vs w4 (layout for free, no semantics); rep_3 0.89 / 0.07 / 0.13, DINO vs curve -0.06; rep_1+score_1 0.91 / 0.11 / 0.18
+  (+0.02 DINO over score alone, n.s.); rep_3+score_1 0.76 / 0.15 / 0.22, DINO vs curve -0.12*. Repulsion between predicted
+  latents diversifies layout (what latent distance mostly measures), not semantics. Next: repulsion in mid-block feature space.
+- 04:07 Feature-space repulsion at block 12 (frep, token activations), group 16-31 (paired_tests/joint_frep.txt): frep_0.25
+  precision 0.93, DINO -0.02, layout +0.27; frep_0.5 0.87 / 0.03 / +0.53; frep_1 0.24 / 0.25 / +1.01. All below the curve on
+  DINO (-0.11 to -0.19*). Token activations are organised by position, so their distances mostly reflect layout too.
+  Next: repulsion in DINOv2 space of the decoded predicted image (gradient through VAE decoder + DINOv2, not SiT).
+- 04:27 DINOv2-space repulsion (drep) smoke test: ~4 GB peak, ~75 min per 16-seed condition; s=1 barely changes samples (mean
+  latent change 0.014: the pulled-back DINO gradient is mostly detail SiT removes again), s=10 gives 0.12. Screening drep_10
+  and drep_25 on group 16-31.
+- 09:36 Connection recovered; training-set fetch complete: 1,300 images per class, embeddings only
+  (outputs/real_imagenet_train/dino.npz). The DINOv2-space repulsion run (drep_10) had not finished its first 16-seed
+  condition after 5 h (process swapped out): stopped, not evaluated.
+- 09:58 Re-scored held-out 24-47 against the 1,300-image training reference (paired_tests/train_ref_heldout_24_47.txt):
+  score_1 precision ret. 1.00, DINO +0.11 [+0.08,+0.14] and CLIP +0.14 vs the cond curve, vs w=3 precision +0.24 [+0.10,+0.37];
+  w=3 0.77 (on the curve, -0.00); shift damping 0.77 (+0.03 n.s.); shifts+scales 0.58 (-0.05). With the finer reference the
+  earlier edges of w=3 and shift damping disappear; score damping is the clear winner. Figure: figures/frontier_heldout.png.
+  (knn_radius rewritten without the (N, N, D) broadcast: same values, needed at N = 1300.)

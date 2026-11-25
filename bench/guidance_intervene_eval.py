@@ -19,7 +19,7 @@ import torch
 
 sys.path.insert(0, "bench")
 from common import LABELS
-from guidance_analysis import pairwise_cos_distance, write_csv
+from guidance_analysis import pairwise_cos_distance, vendi, write_csv
 from guidance_window import band_split, spread_v
 
 CLASSIFIER = "vit_base_patch16_224.augreg2_in21k_ft_in1k"  # a timm ViT-B/16 ImageNet-1k classifier, independent of SiT
@@ -82,10 +82,13 @@ def load(run):
 def metrics(d, idx):
     """Diversity and fidelity of one condition on the seeds idx (positions into the shared seed list)."""
     low, _ = band_split(d["final"][idx])
-    # V_low: spread of the coarse (layout) part of the final latents. dino, clip: semantic spread. p_target: fidelity.
+    # V_low: spread of the coarse (layout) part of the final latents. dino, clip: semantic spread (mean pairwise cosine distance);
+    # vendi_dino, vendi_clip: Vendi score (effective number of distinct samples per class). p_target: fidelity.
     return dict(V_low=float(spread_v(np.moveaxis(low, 0, 1)).mean()),
                 dino=float(np.mean([pairwise_cos_distance(d["dino"][idx, c]) for c in range(8)])),
                 clip=float(np.mean([pairwise_cos_distance(d["clip"][idx, c]) for c in range(8)])),
+                vendi_dino=float(np.mean([vendi(d["dino"][idx, c]) for c in range(8)])),
+                vendi_clip=float(np.mean([vendi(d["clip"][idx, c]) for c in range(8)])),
                 p_target=float(d["p_target"][idx].mean()))
 
 
@@ -103,7 +106,7 @@ def stats(run):
     rows = []
     for c, m in point.items():
         row = dict(condition=c, n_seeds=len(seeds), **m)
-        for key in ("V_low", "dino", "clip"):
+        for key in ("V_low", "dino", "clip", "vendi_dino", "vendi_clip"):
             # recovery is computed inside each resample too, so its interval includes the noise in the w1 and w4 baselines.
             f = lambda b: (b[c][key] - b["w4"][key]) / (b["w1"][key] - b["w4"][key])
             row[f"recovery_{key}"] = f(point)
@@ -128,7 +131,7 @@ def main():
         embed(run)
     if a.stats:
         for row in stats(run):
-            print(row["condition"].ljust(13), {k: round(row[k], 3) for k in ("recovery_V_low", "recovery_dino", "recovery_clip", "retention")}, flush=True)
+            print(row["condition"].ljust(13), {k: round(row[k], 3) for k in ("recovery_V_low", "recovery_dino", "recovery_clip", "recovery_vendi_dino", "recovery_vendi_clip", "retention")}, flush=True)
 
 
 if __name__ == "__main__":

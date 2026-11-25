@@ -94,10 +94,13 @@ model calls. SiT's default solver (dopri5) is adaptive, which would make "step k
 | `cond_tokens.py` | From a `--token-steps` capture: per block, step and class, how shared across seeds, spatially uniform and low-rank the token-level class push (cond − uncond) is, and how well a subspace fit on some seeds carries to others. |
 | `cond_circuit.py` | Activation patching of each block group's six adaLN modulation chunks on saved w = 4 states: how much of the class-shared versus seed-specific push each carries. |
 | `head_circuit.py` | The same split for all 384 attention heads, by attribution patching (gradients), checked by exact patching of the top heads. |
-| `real_fidelity.py` | Fetches the 50 ImageNet validation images of each class (gated dataset; needs a Hugging Face login), embeds them like generated images, and scores every condition of a run with class-conditional precision/recall and FD_DINOv2. |
+| `real_fidelity.py` | Fetches the 50 ImageNet validation images of each class (gated dataset; needs a Hugging Face login), embeds them like generated images, and scores every condition of a run with class-conditional precision/recall and FD_DINOv2. `--fetch-train` embeds the 1,300 training images per class instead (only embeddings are kept; ~147 GB streamed). `paired_vs_cond.py`, `points.py` and `frontier_figure.py` take the real-image folder from `$REAL`. |
 | `paired_vs_cond.py` | Paired bootstrap test of each condition's layout/DINO/CLIP recovery against the condition-damping curve at the same real-image precision retention, plus paired differences between named conditions. |
 | `points.py` | Point values of precision retention and DINO/CLIP recovery for conditions on a seed range. |
 | `screen.sh` | Samples conditions into `SiT-L_2_night` for a seed range, embeds them and runs `paired_vs_cond.py` on those seeds. |
+| `joint_sample.py` | Joint sampling of a seed group with repulsion between samples of a class: in latent space (`rep`), block token activations (`frep`) or DINOv2 space of the decoded prediction (`drep`); optional global w and score damping. Same output format as `guidance_intervene.py`. |
+| `joint_screen.sh` | Samples joint conditions for one seed group into `SiT-L_2_joint`, embeds them and runs the paired test. |
+| `frontier_figure.py` | Figure: precision retention against DINO recovery on held-out seeds, with the condition-damping curve. Precision uses the real images in `$REAL`. |
 
 ## Reproducing each result
 
@@ -161,6 +164,8 @@ The tables are fit on seeds 0–15, and evaluation uses seeds 16–31. The scrip
 | `SiT-L_2_tokens/` | w = 4, seeds 0-15, unpooled activations of all 24 blocks at 7 steps (`--token-steps`); `analysis/cond_tokens.csv` and `token_tables.npz` (tfeat bases) |
 | `SiT-L_2_blockcond/`, `SiT-L_2_tfeat/` | Seeds 16-31: block-group condition damping, tfeat and its combinations; `intervention_results.csv`, `real_fidelity.csv` |
 | `SiT-L_2_confirm/` | Fresh seeds 32-47: confirmation runs with all baselines |
+| `SiT-L_2_joint/` | Seeds 16-31 sampled jointly with repulsion (baselines symlinked) |
+| `figures/frontier_heldout.png` | RESULTS.md 12.7 figure |
 | `SiT-L_2_night/`, `SiT-L_2_heads/` | Seeds 16-47 (baselines symlinked from the runs above): CADS, embedding noise, tshuffle, mcond (adaLN chunk damping), lower w, skip-layer guidance, per-head damping |
 | `paired_tests/` | Outputs of `paired_vs_cond.py` and `real_fidelity.py` for every comparison in RESULTS.md section 12 |
 | `comparisons/` | Sample sheets (classes × seeds) for the interventions |
