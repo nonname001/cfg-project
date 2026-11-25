@@ -1,0 +1,2 @@
+mcond_1.3333+mchunks_36        vs cond curve: lay -0.378 [-0.667,+0.036], dino +0.049 [-0.073,+0.198], clip +0.106 [-0.069,+0.332]
+tfeat_1.3333+score_1+late_6+smooth_0.1 vs cond curve: lay +0.252 [+0.023,+0.513], dino -0.028 [-0.183,+0.105], clip +0.123 [-0.029,+0.283]

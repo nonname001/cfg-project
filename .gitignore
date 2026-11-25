@@ -17,3 +17,10 @@ pretrained_models/
 
 # A run stopped after two seeds; superseded by SiT-L_2_mech
 outputs/guidance_delta/SiT-L_2_seeds8-15/
+!outputs/guidance_delta/SiT-L_2_tokens/analysis/token_tables.npz
+
+# ImageNet validation images for real_fidelity.py: fetched with a Hugging Face login, not redistributed here
+outputs/real_imagenet_val/
+
+# Run logs (sampling progress); the results they produce are saved as CSV / text
+outputs/**/*.log

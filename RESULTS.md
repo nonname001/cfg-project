@@ -11,6 +11,14 @@ early (score-space damping) restores the lost layout variety while keeping about
 Weakening the class signal at the network's input (condition-space damping) restores more semantic variety, but only
 by rewriting the network's internal class signal directly. Combining the two works best.
 
+**Later work (section 12)** traced where the class signal acts inside the network and tried to recover semantic variety
+at the same real-image fidelity (now measured as precision against real ImageNet photos). The class push is spread over
+many blocks, modulation parameters and heads, with no small "collapse circuit". Almost every intervention lands on the
+same diversity–fidelity curve as condition damping once tested on fresh seeds; several apparent wins on the seeds used to
+pick them did not replicate. Two things held up: plain lower guidance (w = 3 at every step) beats condition damping at the
+high-fidelity end, and removing the class dependence of the adaLN *shift* parameters early adds a small further semantic
+gain over w = 3 at equal fidelity.
+
 ---
 
 ## Contents
@@ -26,7 +34,8 @@ by rewriting the network's internal class signal directly. Combining the two wor
 9. [When does guidance matter? Windowed guidance](#9-when-does-guidance-matter-windowed-guidance)
 10. [Interventions: removing only the shared push](#10-interventions-removing-only-the-shared-push)
 11. [Mechanistic study: how each intervention works](#11-mechanistic-study-how-each-intervention-works)
-12. [Limits and open questions](#12-limits-and-open-questions)
+12. [Conditioning inside the network: where the class acts, and interventions](#12-conditioning-inside-the-network-where-the-class-acts-and-interventions)
+13. [Limits and open questions](#13-limits-and-open-questions)
 
 ---
 
@@ -538,25 +547,152 @@ intervals overlap on fidelity.
 
 ---
 
-## 12. Limits and open questions
+## 12. Conditioning inside the network: where the class acts, and interventions
+
+**Question.** Condition damping (section 10) recovers the most semantic variety, but at a fidelity cost. Can the class
+signal be weakened more selectively (in some blocks, directions, parameters or heads) to get more semantic variety at
+the same fidelity?
+
+### 12.1 Measuring fidelity with real images, and a stricter protocol
+
+**Real-image fidelity.** The classifier's confidence (section 10) saturates. Fidelity is now also measured as
+class-conditional **precision** (Kynkäänniemi et al., k = 3, DINOv2 features): the share of generated images that fall
+inside the manifold of real images of their class, here the 50 ImageNet validation images per class
+(`bench/real_fidelity.py`). **Precision retention** = (P − P_w1) / (P_w4 − P_w1), like fidelity retention. It is much
+stricter than the classifier: tfeat (12.3) keeps 0.91 of the classifier's fidelity gain but only 0.71 of precision.
+FD_DINOv2 is also computed but is unreliable at 128 samples per condition.
+
+**The comparison that matters.** Diversity and fidelity trade off, so a method only helps if it gives more diversity
+than condition damping *at the same fidelity*. Every method is compared with the **condition-damping curve**
+(w4 → cond 0.5 → cond 0.75 → cond 1, piecewise linear in precision retention) by a paired seed bootstrap
+(`bench/paired_vs_cond.py`). Positive "vs curve" means more diversity than condition damping at equal fidelity.
+
+**Fresh seeds.** Methods were chosen on seeds 16–31 (16 seeds) and confirmed on fresh seeds 32–47. Later methods were
+screened on seeds 16–23 and confirmed on seeds 24–47, never used to choose them. This mattered: most wins on the
+selection seeds disappeared on fresh ones (12.5).
+
+### 12.2 Where the class signal acts
+
+**By block group** (`bcond`: condition damping in blocks 0–7, 8–15 or 16–23 only; seeds 16–31, classifier fidelity):
+
+| Damped blocks | Layout | DINO | CLIP | Fidelity |
+|---|---|---|---|---|
+| 0–7 | 0.13 | 0.05 | 0.11 | 0.97 |
+| 8–15 (mid) | 0.23 | **0.16** | **0.26** | 0.95 |
+| 16–23 + final layer | **0.59** | 0.09 | 0.19 | 0.98 |
+| final layer only | 0.21 | −0.02 | 0.04 | 1.02 |
+| all (= cond 1) | 1.29 | 0.44 | 0.70 | 0.71 |
+
+Mid blocks carry the semantic effect, late blocks and the final layer the layout effect. Graded strengths centred on the
+mid blocks all land on the global condition-damping curve.
+
+**At the token level** (`bench/cond_tokens.py`, all 24 blocks unpooled at 7 steps, seeds 0–15). In the mid blocks during
+t < 0.3, the class push d = cond − uncond is 50–62% shared across seeds (chance 6%), only ~38% spatially uniform (so a
+pooled edit like feature damping reaches little of it), and low-rank: 16 directions fit on 8 seeds capture 60–66% of it
+on the other 8. It is almost orthogonal to the directions in which seeds differ (4–6% of that variation, chance 1.6%):
+mid blocks *add* a shared class signal rather than flattening seed variation. In late blocks that overlap rises to 37%.
+
+**By adaLN modulation parameter** (`bench/cond_circuit.py`). The class reaches each block only through six modulation
+vectors (shift, scale and gate for attention and for the MLP). Patching one at a time to its null value on saved states:
+the push is spread over many blocks and parameters. The gates carry the most; the **shift** parameters lean towards the
+class-shared push (shift_mlp, all blocks: 0.26 of block 15's shared push vs 0.12 of its seed-specific part).
+
+**By attention head** (`bench/head_circuit.py`, attribution patching of all 384 heads, checked by exact patching). No
+head is collapse-specific: the most shared-leaning heads (blocks 14–15) carry only ~1.4× more shared than seed-specific
+push at block 15, and about equal amounts at the output.
+
+### 12.3 Interventions
+
+| Method | What it changes (t < 0.3 unless stated) |
+|---|---|
+| **tfeat** | In blocks 8–15, removes each token's push inside its class's rank-16 shared subspace (fit on seeds 0–15) |
+| tfeat, wrong class | Same with another class's subspace (control) |
+| + score, + late_w, smooth | Combined with score damping; guidance w after the window; a cosine ramp instead of a step at t = 0.3 |
+| tshuffle | Rotates the shared token push per seed instead of removing it |
+| CADS, embedding noise | Noise on the class embedding (CADS: pure noise annealed to clean over t = 0.1–0.4) |
+| **mcond** | Moves chosen adaLN modulation vectors (all blocks) to their null-class values |
+| hcond | Same for the outputs of the top-ranked attention heads |
+| wall_w, slg | Guidance w at every step; skip-layer guidance (push away from the model with blocks 10–12 skipped) |
+
+### 12.4 Results that held up on fresh seeds
+
+| Seeds 24–47 (held out) | Precision ret. | DINO | CLIP | Layout vs w4 |
+|---|---|---|---|---|
+| w = 4 | 1.00 | 0.00 | 0.00 | — |
+| **w = 3 at every step** | 0.95 | 0.08 | 0.12 | +0.24 |
+| **mcond, shift_mlp + shift_msa** | 0.95 | 0.11 | 0.17 | +0.12 |
+| mcond, shift_mlp | 0.98 | 0.07 | 0.11 | +0.01 |
+| cond 0.5 | 0.84 | 0.14 | 0.23 | |
+| cond 0.75 | 0.71 | 0.33 | 0.53 | |
+
+- **Lower w beats condition damping at the high-fidelity end.** w = 3 vs the condition-damping curve: DINO +0.04
+  [−0.00, +0.08], CLIP +0.05 (n.s.), plus layout diversity.
+- **Damping both adaLN shifts adds a small semantic gain over w = 3** at equal precision: DINO +0.03 [+0.00, +0.05], CLIP
+  +0.04 [+0.01, +0.08], at the cost of layout (−0.12). Against the condition curve: DINO +0.07 [+0.02, +0.11]. Damping
+  shift_mlp alone is no better than w = 3.
+- **tfeat + score + late w = 6 beats cond 0.5** at the same precision (fresh seeds 32–47: DINO +0.11, CLIP +0.25, layout
+  +0.60, precision −0.03 n.s.), but against the interpolated curve its DINO gain is only +0.03 (n.s.): most of it is
+  layout from score damping.
+- **Controls:** tfeat with the wrong class's subspace loses most of its effect (DINO −0.20), so the class-specific
+  directions matter. Condition damping + late w = 6 matches tfeat + score + late w = 6 on DINO but at 0.17 lower precision
+  on the selection seeds.
+
+![Shift damping samples](outputs/guidance_delta/comparisons/circuit_macaw.jpg)
+
+### 12.5 What did not hold up
+
+| Method | On the seeds used to choose it | On fresh seeds |
+|---|---|---|
+| tfeat + score | DINO +0.14 vs curve (significant) | −0.08 (n.s.); cond 1 more diverse at equal precision |
+| tfeat + score + late 6, smooth ramp | DINO +0.10, CLIP +0.23 vs curve | 0.00 / 0.00 |
+| mcond, shifts + scales | precision 1.02, DINO 0.18 (best screen) | precision 0.79, on the curve |
+
+Everything else was on or below the curve already on the selection seeds: tfeat alone, block-group schedules, CADS
+(DINO −0.13 vs curve), embedding noise (no diversity at all), tshuffle, mcond on gates only or on all six parameters
+(both behave like condition damping), per-head damping (top 32 heads ≈ w = 3 or slightly worse, top 64 below the curve),
+lower-rank / fewer-block / shorter-window tfeat, and stronger late guidance (which buys fidelity but removes semantic
+variety: semantic diversity is still being set after t = 0.3, layout is not). Skip-layer guidance destroys precision
+(retention −0.10 to 0.12) by flattening texture into an illustration-like look.
+
+### 12.6 Takeaways
+
+- **The class push is distributed** at every level examined (blocks, tokens, modulation parameters, heads), which is
+  likely why no targeted edit moves far off the condition-damping curve.
+- **Per-sample interventions seem to share one diversity–fidelity frontier.** The robust gains are layout (score damping,
+  nearly free), the lower-w end of the frontier, and a small semantic gain from shift damping.
+- **16 seeds are not enough to claim small effects.** Precision retention intervals are about ±0.1; differences of
+  0.05–0.1 in recovery repeatedly failed to replicate. Every claim above is checked on fresh seeds.
+
+The full timestamped log of the circuit and overnight experiments is `outputs/guidance_delta/night_notes.md`; all test
+outputs are in `outputs/guidance_delta/paired_tests/`.
+
+---
+
+## 13. Limits and open questions
 
 **Limits that apply throughout:**
 
 - **One model, one main guidance scale.** Only SiT-L/2 (community weights of unknown training recipe), mostly at
   w = 4, with one window boundary (t = 0.3) and fixed choices (rank 3, frequency cutoffs 4 and 8).
-- **Fidelity is a proxy.** The classifier's confidence mostly saturates (top-1 accuracy 100% for most conditions) and
-  misses visual problems like desaturation. There is no FID or precision/recall.
-- **Internal conclusions mostly use pooled activations,** which are only 2–9% of token variation. The token-level
-  data is logged but mostly unanalysed.
-- **Correlation, not causation.** Links between internal measures (like effective rank) and image outcomes (like
-  semantic diversity) are observed associations. They haven't been tested by ablation.
+- **Fidelity is a proxy in sections 10–11.** The classifier's confidence mostly saturates (top-1 accuracy 100% for most
+  conditions) and misses visual problems like desaturation. Section 12 adds precision against real images, but with
+  only 50 real images per class (ImageNet validation), and FD_DINOv2 is unreliable at 128 samples per condition.
+- **Sections 7–11 mostly use pooled activations,** which are only 2–9% of token variation. Section 12 adds a token-level
+  analysis of the class push in blocks 8–23.
+- **Correlation, not causation, in sections 7–11.** Links between internal measures (like effective rank) and image
+  outcomes are associations. Section 12 adds ablations (patching blocks, modulation parameters and heads).
+- **Small samples.** 8 classes and 16–32 seeds per comparison; several selection-seed results failed on fresh seeds.
 - **Bootstrap intervals are approximate:** they resample the same 16 seeds rather than drawing new ones.
 
 **Open questions:**
 
-1. Does the pooled-only picture hold at the token level?
+1. ~~Does the pooled-only picture hold at the token level?~~ Partly answered in 12.2.
 2. Splitting each internal change into stronger, weaker and redirected parts, to answer the compensation question
    (section 11.1).
 3. Recalibrating the condition method from the network's measured response instead of assuming linearity.
 4. Testing causally whether the extra directions condition damping adds are what drive semantic diversity.
-5. Adding a real image-quality metric, needed before trusting any of the semantic-diversity results.
+5. ~~Adding a real image-quality metric.~~ Precision added in 12.1; a larger real set (ImageNet train, ~1,300 images
+   per class) would make it more reliable.
+6. More seeds and classes, to resolve differences of ~0.05 in recovery.
+7. Joint sampling across seeds (e.g. repulsion between samples of a class), the one lever not yet tried: every method
+   here changes samples independently, and all of them seem to share one frontier.

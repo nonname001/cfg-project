@@ -1,0 +1,9 @@
+wall_3                         vs cond curve: lay +0.058 [-0.119,+0.232], dino +0.039 [-0.001,+0.076], clip +0.048 [-0.038,+0.123]
+mcond_1.3333+mchunks_8         vs cond curve: lay -0.076 [-0.287,+0.027], dino +0.046 [+0.001,+0.075], clip +0.081 [-0.007,+0.135]
+mcond_1.3333+mchunks_9         vs cond curve: lay -0.068 [-0.283,+0.117], dino +0.065 [+0.016,+0.114], clip +0.090 [-0.002,+0.178]
+mcond_1.3333+mchunks_8 - wall_3               lay -0.235 [-0.262,-0.208], dino -0.016 [-0.029,-0.001], clip -0.008 [-0.041,+0.023], precRet +0.033 [-0.015,+0.090]
+mcond_1.3333+mchunks_9 - wall_3               lay -0.121 [-0.148,-0.095], dino +0.027 [+0.003,+0.051], clip +0.043 [+0.010,+0.080], precRet -0.001 [-0.062,+0.057]
+wall_3 - w4                                   lay +0.240 [+0.225,+0.255], dino +0.082 [+0.061,+0.102], clip +0.123 [+0.099,+0.145], precRet -0.049 [-0.096,+0.000]
+wall_3                                     precRet 0.95 dino 0.08 clip 0.12
+mcond_1.3333+mchunks_8                     precRet 0.98 dino 0.07 clip 0.11
+mcond_1.3333+mchunks_9                     precRet 0.95 dino 0.11 clip 0.17

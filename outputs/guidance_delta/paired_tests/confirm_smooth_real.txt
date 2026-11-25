@@ -1,0 +1,11 @@
+cond_0.5               {'precision': 0.812, 'precision_retention': 0.864, 'recall': 0.397, 'fd': 917.828}
+cond_0.75              {'precision': 0.75, 'precision_retention': 0.765, 'recall': 0.538, 'fd': 975.993}
+cond_1                 {'precision': 0.648, 'precision_retention': 0.605, 'recall': 0.705, 'fd': 1103.395}
+cond_1+late_6+smooth_0.1 {'precision': 0.703, 'precision_retention': 0.691, 'recall': 0.625, 'fd': 1045.729}
+score_1                {'precision': 0.898, 'precision_retention': 1.0, 'recall': 0.34, 'fd': 912.886}
+tfeat_1.3333           {'precision': 0.766, 'precision_retention': 0.79, 'recall': 0.495, 'fd': 1008.364}
+tfeat_1.3333+score_1   {'precision': 0.672, 'precision_retention': 0.642, 'recall': 0.607, 'fd': 1057.466}
+tfeat_1.3333+score_1+late_6 {'precision': 0.797, 'precision_retention': 0.84, 'recall': 0.44, 'fd': 982.369}
+tfeat_1.3333+score_1+late_6+smooth_0.1 {'precision': 0.758, 'precision_retention': 0.778, 'recall': 0.497, 'fd': 1015.84}
+w1                     {'precision': 0.266, 'precision_retention': 0.0, 'recall': 0.86, 'fd': 1553.948}
+w4                     {'precision': 0.898, 'precision_retention': 1.0, 'recall': 0.185, 'fd': 943.477}

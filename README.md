@@ -91,6 +91,13 @@ model calls. SiT's default solver (dopri5) is adaptive, which would make "step k
 | `guidance_intervene_eval.py` | `--embed`: decodes, embeds and classifies every sample. `--stats`: diversity recovery and fidelity retention with bootstrap intervals. |
 | `guidance_mech.py` | Per-block effective rank under each intervention. |
 | `guidance_figures.py`, `guidance_mech_figures.py` | Figures 1–3. |
+| `cond_tokens.py` | From a `--token-steps` capture: per block, step and class, how shared across seeds, spatially uniform and low-rank the token-level class push (cond − uncond) is, and how well a subspace fit on some seeds carries to others. |
+| `cond_circuit.py` | Activation patching of each block group's six adaLN modulation chunks on saved w = 4 states: how much of the class-shared versus seed-specific push each carries. |
+| `head_circuit.py` | The same split for all 384 attention heads, by attribution patching (gradients), checked by exact patching of the top heads. |
+| `real_fidelity.py` | Fetches the 50 ImageNet validation images of each class (gated dataset; needs a Hugging Face login), embeds them like generated images, and scores every condition of a run with class-conditional precision/recall and FD_DINOv2. |
+| `paired_vs_cond.py` | Paired bootstrap test of each condition's layout/DINO/CLIP recovery against the condition-damping curve at the same real-image precision retention, plus paired differences between named conditions. |
+| `points.py` | Point values of precision retention and DINO/CLIP recovery for conditions on a seed range. |
+| `screen.sh` | Samples conditions into `SiT-L_2_night` for a seed range, embeds them and runs `paired_vs_cond.py` on those seeds. |
 
 ## Reproducing each result
 
@@ -151,6 +158,13 @@ The tables are fit on seeds 0–15, and evaluation uses seeds 16–31. The scrip
 | `SiT-L_2_window_early/`, `SiT-L_2_window_late/` | Windowed-guidance runs, same layout |
 | `SiT-L_2_interventions/` | One folder per condition with `seed_N.npz` (final latents), embeddings, samples, `intervention_results.csv` |
 | `SiT-L_2_mech/` | One folder per condition and `analysis/` (`mech_blocks.csv`, figures) |
+| `SiT-L_2_tokens/` | w = 4, seeds 0-15, unpooled activations of all 24 blocks at 7 steps (`--token-steps`); `analysis/cond_tokens.csv` and `token_tables.npz` (tfeat bases) |
+| `SiT-L_2_blockcond/`, `SiT-L_2_tfeat/` | Seeds 16-31: block-group condition damping, tfeat and its combinations; `intervention_results.csv`, `real_fidelity.csv` |
+| `SiT-L_2_confirm/` | Fresh seeds 32-47: confirmation runs with all baselines |
+| `SiT-L_2_night/`, `SiT-L_2_heads/` | Seeds 16-47 (baselines symlinked from the runs above): CADS, embedding noise, tshuffle, mcond (adaLN chunk damping), lower w, skip-layer guidance, per-head damping |
+| `paired_tests/` | Outputs of `paired_vs_cond.py` and `real_fidelity.py` for every comparison in RESULTS.md section 12 |
+| `comparisons/` | Sample sheets (classes × seeds) for the interventions |
+| `night_notes.md` | Timestamped log of the circuit / overnight experiments, with every interval |
 
 These folders also hold tables and figures from earlier analyses that are not in the report (see RESULTS.md); the code that
 made them has been removed, and `SiT-L_2/`, `SiT-L_2_seeds8-15/` and `SiT-L_2_interventions_calibration/` come from runs

@@ -1,0 +1,6 @@
+tfeat_1.3333+score_1+late_6+smooth_0.1 vs cond curve: lay +0.283 [+0.075,+0.570], dino +0.002 [-0.143,+0.173], clip +0.000 [-0.225,+0.297]
+cond_1+late_6+smooth_0.1       vs cond curve: lay +0.125 [-0.018,+0.262], dino -0.003 [-0.103,+0.108], clip +0.037 [-0.104,+0.186]
+tfeat_1.3333+score_1+late_6    vs cond curve: lay +0.481 [+0.231,+0.656], dino +0.033 [-0.106,+0.109], clip +0.132 [-0.116,+0.289]
+tfeat_1.3333+score_1+late_6+smooth_0.1 - cond_1+late_6+smooth_0.1 lay -0.039 [-0.130,+0.029], dino -0.124 [-0.179,-0.064], clip -0.244 [-0.324,-0.162], precRet +0.085 [-0.044,+0.214]
+tfeat_1.3333+score_1+late_6+smooth_0.1 - tfeat_1.3333+score_1+late_6 lay -0.034 [-0.044,-0.023], dino +0.070 [+0.038,+0.099], clip +0.029 [-0.004,+0.066], precRet -0.062 [-0.151,+0.023]
+tfeat_1.3333+score_1+late_6+smooth_0.1 - cond_0.5 lay +0.563 [+0.468,+0.648], dino +0.176 [+0.114,+0.224], clip +0.278 [+0.218,+0.336], precRet -0.092 [-0.227,+0.042]
