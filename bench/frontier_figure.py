@@ -1,7 +1,7 @@
 """Figure: semantic diversity against real-image fidelity on held-out seeds, with the condition-damping curve as reference.
 
 x = precision retention, y = DINO recovery (as in paired_vs_cond.py), on seeds 24-47 of SiT-L_2_night, which no method was chosen
-on. Gray line: w4 -> cond 0.5 -> cond 0.75 -> cond 1. Points: the methods, with 95% seed-bootstrap intervals on both axes.
+on by default (--seeds). Gray line: w4 -> cond 0.5 -> cond 0.75 -> cond 1. Points: the methods, with 95% seed-bootstrap intervals on both axes.
 Precision uses the real images in $REAL (default outputs/real_imagenet_val; the report figure uses outputs/real_imagenet_train).
 usage: [REAL=<dir>] frontier_figure.py [--out <png>] [--title <text>]     (from the project root)
 """
@@ -16,7 +16,6 @@ from guidance_analysis import pairwise_cos_distance
 from real_fidelity import knn_radius
 
 RUN = Path("outputs/guidance_delta/SiT-L_2_night")
-SEEDS = range(24, 48)
 CURVE = [("w4", "w = 4"), ("cond_0.5", "cond 0.5"), ("cond_0.75", "cond 0.75"), ("cond_1", "cond 1")]
 METHODS = [("wall_3", "w = 3"), ("score_1", "score damping"), ("mcond_1.3333+mchunks_9", "shift damping"),
            ("mcond_1.3333+mchunks_27", "shift+scale damping")]
@@ -26,8 +25,10 @@ SURFACE, INK, MUTED, GRID, SERIES, CURVE_INK = "#fcfcfb", "#1d1d1b", "#6b6a64", 
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--out", default="outputs/guidance_delta/figures/frontier_heldout.png")
-    p.add_argument("--title", default="Held-out seeds 24-47: methods vs the condition-damping curve (gray)")
+    p.add_argument("--title", default="Methods vs the condition-damping curve (gray)")
+    p.add_argument("--seeds", type=int, nargs=2, default=[24, 47], help="seed range (inclusive)")
     a = p.parse_args()
+    SEEDS = range(a.seeds[0], a.seeds[1] + 1)
     real = np.load(os.environ.get("REAL", "outputs/real_imagenet_val") + "/dino.npz")
     R = {c: real["dino"][real["labels"] == c].astype(np.float64) for c in LABELS}
     rad = {c: knn_radius(R[c]) for c in LABELS}

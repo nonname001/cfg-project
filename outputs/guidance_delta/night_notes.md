@@ -137,3 +137,9 @@ Goal: more semantic diversity (DINO/CLIP recovery) at the same real-image fideli
   w=3 0.77 (on the curve, -0.00); shift damping 0.77 (+0.03 n.s.); shifts+scales 0.58 (-0.05). With the finer reference the
   earlier edges of w=3 and shift damping disappear; score damping is the clear winner. Figure: figures/frontier_heldout.png.
   (knn_radius rewritten without the (N, N, D) broadcast: same values, needed at N = 1300.)
+- 10:02 CORRECTION to 09:58: on seeds 16-31 the same training-reference comparison reverses (score_1 precision ret. 0.81,
+  w=3 0.98). Pooled 16-47 (paired_tests/train_ref_pooled_16_47.txt): score_1 0.91 / DINO 0.12, vs cond curve DINO +0.08
+  [+0.03,+0.13], CLIP +0.10 [+0.04,+0.17], vs w4 precision -0.09 (n.s.); w=3 0.85 / 0.09 (+0.02 n.s.); shift damping 0.82 /
+  0.11 (+0.03 n.s.). Score damping is still the one method significantly above the curve, but modestly; precision varies a
+  lot between 16-seed sets. Joint sampling re-scored with the training reference (paired_tests/train_ref_joint_16_31.txt):
+  nothing above the curve. RESULTS.md 12.7 and the figure use the pooled numbers.

@@ -15,10 +15,11 @@ by rewriting the network's internal class signal directly. Combining the two wor
 at the same real-image fidelity (now measured as precision against real ImageNet photos). The class push is spread over
 many blocks, modulation parameters and heads, with no small "collapse circuit". Almost every intervention lands on the
 same diversity–fidelity curve as condition damping once tested on fresh seeds; several apparent wins on the seeds used to
-pick them did not replicate. With a stricter fidelity reference (1,300 real images per class, 12.7), **score damping is
-the one method clearly above that curve**: on held-out seeds it keeps all of w = 4's fidelity while recovering nearly all
-lost layout diversity and some semantic diversity (DINO +0.11 over condition damping at equal fidelity). Lower w and the
-circuit-based interventions land on the curve; joint sampling with repulsion between samples adds layout diversity only.
+pick them did not replicate. With a stricter fidelity reference (1,300 real images per class) and all 32 evaluation seeds
+pooled (12.7), **score damping is the one method significantly above that curve**: it recovers nearly all lost layout
+diversity and some semantic diversity (DINO +0.08 over condition damping at equal fidelity) at a small, non-significant
+fidelity cost. Lower w and the circuit-based interventions land on the curve; joint sampling with repulsion between
+samples adds layout diversity only. Precision still varies a lot between seed sets, so these differences are modest.
 
 ---
 
@@ -659,8 +660,8 @@ variety: semantic diversity is still being set after t = 0.3, layout is not). Sk
 
 - **The class push is distributed** at every level examined (blocks, tokens, modulation parameters, heads), which is
   likely why no targeted edit moves far off the condition-damping curve.
-- **Per-sample interventions seem to share one diversity–fidelity frontier,** except score damping, which sits above it
-  (12.7). The apparent gains of lower w and shift damping in 12.4 did not survive the stricter fidelity reference.
+- **Per-sample interventions seem to share one diversity–fidelity frontier,** except score damping, which sits modestly
+  above it (12.7). The apparent gains of lower w and shift damping in 12.4 did not survive the stricter fidelity reference.
 - **16 seeds are not enough to claim small effects.** Precision retention intervals are about ±0.1; differences of
   0.05–0.1 in recovery repeatedly failed to replicate. Every claim above is checked on fresh seeds.
 
@@ -674,23 +675,26 @@ reported alongside the mean pairwise distance. It agrees with it everywhere: sam
 
 **Fidelity against 1,300 real images per class.** Precision so far used the 50 ImageNet validation images per class. The
 training images of the 8 classes (1,300 each, embedded only; `real_fidelity.py --fetch-train`) give a much finer real
-manifold, and precision becomes stricter and more discriminating:
+manifold, and precision becomes stricter. It also varies a lot between seed sets, so the numbers below pool all 32
+evaluation seeds (16–47; seeds 16–23 were used to screen the mcond variants, so those two rows are slightly optimistic):
 
-![Frontier on held-out seeds](outputs/guidance_delta/figures/frontier_heldout.png)
+![Frontier, seeds 16-47](outputs/guidance_delta/figures/frontier_heldout.png)
 
-| Held out 24–47 | Precision ret. (50 val / 1,300 train) | DINO | CLIP | DINO vs curve (train) |
-|---|---|---|---|---|
-| **score damping** | 0.98 / **1.00** | 0.12 | 0.15 | **+0.11** [+0.08, +0.14] |
-| w = 3 | 0.95 / 0.77 | 0.08 | 0.12 | −0.00 |
-| shift damping (both shifts) | 0.95 / 0.77 | 0.11 | 0.17 | +0.03 (n.s.) |
-| shift + scale damping | 0.79 / 0.58 | 0.21 | 0.27 | −0.05 |
-| cond 0.5 / 0.75 / 1 | 0.84 / 0.61, 0.71 / 0.57, 0.53 / 0.34 | 0.14 / 0.33 / 0.51 | | |
+| Seeds 16–47, 1,300-image reference | Precision ret. | DINO | CLIP | DINO vs curve | CLIP vs curve |
+|---|---|---|---|---|---|
+| **score damping** | 0.91 | 0.12 | 0.16 | **+0.08** [+0.03, +0.13] | **+0.10** [+0.04, +0.17] |
+| w = 3 | 0.85 | 0.09 | 0.13 | +0.02 (n.s.) | +0.03 (n.s.) |
+| shift damping (both shifts) | 0.82 | 0.11 | 0.17 | +0.03 (n.s.) | +0.05 (n.s.) |
+| cond 0.5 | 0.65 | 0.16 | 0.23 | | |
 
-- **Score damping keeps all of w = 4's fidelity** even by the strict reference, while recovering nearly all lost layout
-  diversity (+0.96) and some semantic diversity. Against w = 3: precision retention +0.24 [+0.10, +0.37], DINO +0.04.
-- **Lower w and the circuit-based shift damping fall back onto the condition-damping curve.** Their edge in 12.4 came from
-  the coarse 50-image reference. (With the earlier curve, which wrongly stopped at cond 0.5 instead of running to w4, score
-  damping's position above the curve had also been hidden.)
+- **Score damping is the one method significantly above the condition-damping curve,** in DINO, CLIP and Vendi, and it
+  recovers nearly all lost layout diversity (+0.97 vs w4). Its fidelity cost vs w4 is small and not significant
+  (precision retention −0.09 [−0.18, +0.03]). Against w = 3: DINO +0.04 [+0.01, +0.07], precision +0.06 (n.s.).
+- **Lower w and the circuit-based shift damping are on the curve.** Their edge in 12.4 came from the coarse 50-image
+  reference. (Before the curve was corrected to run to w4 rather than stop at cond 0.5, score damping's position above it
+  had also been hidden.)
+- **Seed-set variation is large:** score damping's precision retention is 0.81 on seeds 16–31 but 1.00 on 24–47, and w = 3's
+  0.98 vs 0.77 (`paired_tests/train_ref_pooled_16_47.txt`). Single 16-seed comparisons of fidelity are not reliable.
 
 **Joint sampling** (`bench/joint_sample.py`): all 16 seeds of a group sampled together; while t < 0.3 the samples of each
 class repel each other, particle-guidance style (RBF kernel, median bandwidth, push sized relative to each sample's
