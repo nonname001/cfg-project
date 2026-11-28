@@ -12,6 +12,10 @@ guidance along the targeted component, that is, guidance beyond w = 1. With exce
   feat_L     in blocks 13-23, conditional rows lose (w-1)/w * L of the pooled cond-uncond difference inside a per-class rank-3
              subspace, again targeting w*(1 - (w-1)/w) = 1 to first order.
   wrongclass_L  score_L using the next class's subspace: tests whether class-specific directions matter.
+  spec_L     the converse of score_L: excess guidance loses L (I - P_c) Delta, its seed-specific part, keeping the shared push.
+  swap_L     excess guidance swaps L of its seed-specific part for another seed's: (I - P_c)(Delta - Delta_donor), Delta_donor
+             the same class's Delta at the same step of the saved w = 4 run of seed (seed mod 16) in DONOR_RUN. Tests whether
+             the seed-specific push has to match the sample.
   bcond_L0-L1-L2[-L3]  cond with its own strength per block group (BLOCK_GROUPS: blocks 0-7, 8-15, 16-23). The final layer
              takes L3 if given, else L2. L = 4/3 makes a = 0: those blocks see only the null class.
              Each group's blocks read c' = c_null + a_g (c_cond - c_null), a_g = 1 - L_g(w-1)/w. The timestep embedding is the
@@ -30,6 +34,7 @@ guidance along the targeted component, that is, guidance beyond w = 1. With exce
   cnoise_s   class embedding + s * std * fresh noise during the window; the class signal keeps its full strength.
   tshuffle_L as tfeat, but the subspace part is replaced by a seed-specific rotation of itself within the subspace.
   wall_w     guidance scale w at every step.
+  gstart_t   no guidance (w = 1) before s_t = t, the run's scale after (a guidance interval [t, 1]); combinable with wall_w.
   slg_s      skip-layer guidance (blocks slgfrom_b..slgto_b, default 10-12, bypassed): f += s (f_cond - f_cond_skip) at every
              step. One extra forward pass on the conditional rows; cannot be combined with hook-based parts.
   hcond_L    with htop_k: damp the class dependence of the top k heads of --head-ranking (their outputs before attn.proj)
@@ -71,6 +76,7 @@ LOW_CUTOFF = 4  # low-pass radius for freq, in cycles per 32-pixel latent (Nyqui
 FEATURE_BLOCKS = list(range(13, 24))  # the later blocks, where w = 4 lowered effective rank in the 16-seed run
 TOKEN_BLOCKS = list(range(8, 16))  # tfeat's blocks: where cond - uncond is most shared across seeds (cond_tokens.py)
 TOKEN_RANK = 16
+DONOR_RUN = "outputs/guidance_delta/SiT-L_2_16seeds"  # swap's donor Deltas: saved w = 4 trajectories of seeds 0-15
 CADS_LO, CADS_HI = 0.1, 0.4  # cads: pure noise conditioning before CADS_LO, annealed to the clean embedding by CADS_HI
 MOD_CHUNKS = ["shift_msa", "scale_msa", "gate_msa", "shift_mlp", "scale_mlp", "gate_mlp"]  # adaLN_modulation output order
 BLOCK_GROUPS = [range(0, 8), range(8, 16), range(16, 24)]  # bcond's groups; the final layer has its own strength
@@ -227,13 +233,13 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
     velocity, and on the guidance scale after the window), so they compose.
     """
     parts = dict(parse(part) for part in condition.split("+"))
-    LATENT, TOKEN = ("score", "wrongclass", "freq"), ("tfeat", "tfeatwrong", "tshuffle")
+    LATENT, TOKEN = ("score", "wrongclass", "freq", "spec", "swap"), ("tfeat", "tfeatwrong", "tshuffle")
     EMBED = ("cond", "cads", "cnoise")  # act on the class embedding
     MOD = ("mcond", "mchunks", "mfrom", "mto", "hcond", "htop")  # hcond_L: damp the top htop_k heads' class dependence  # mcond_L damps chosen adaLN modulation chunks (bitmask mchunks) in blocks mfrom..mto
     TOKEN_MODIFIERS = ("tfeatlate", "tend", "trank", "tfrom")  # change how the token part acts; need tfeat or tfeatwrong
     SLG = ("slg", "slgfrom", "slgto")  # skip-layer guidance: needs the plain forward, so no hook-based parts with it
     assert not ("slg" in parts and set(parts) & {*TOKEN, *EMBED, *MOD}), f"slg cannot be combined with hook-based parts: {condition}"
-    assert len(parts) == 1 or (set(parts) <= {*LATENT, *TOKEN, *TOKEN_MODIFIERS, *EMBED, *MOD, *SLG, "late", "smooth", "wall"}
+    assert len(parts) == 1 or (set(parts) <= {*LATENT, *TOKEN, *TOKEN_MODIFIERS, *EMBED, *MOD, *SLG, "late", "smooth", "wall", "gstart"}
                                and sum(m in LATENT for m in parts) <= 1 and sum(m in TOKEN for m in parts) <= 1), \
         f"only one score-space part, one token part, cond, late and smooth can be combined: {condition}"
     # smooth_<d>: replace the step at EARLY_END by a cosine ramp over EARLY_END +- d. Every damping strength is scaled by the
@@ -270,6 +276,11 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
     excess = (W - 1) / W  # the share of the class signal that cond and feat remove at strength 1
 
     basis = None
+    if latent_method in ("spec", "swap"):
+        basis = tables["latent"]
+    if latent_method == "swap":
+        donor = np.load(Path(DONOR_RUN) / "w4" / f"seed_{seed % 16}" / "trajectory.npz")["delta"][:, :, :GUIDED_CHANNELS]
+        donor = torch.from_numpy(np.ascontiguousarray(donor)).to(device)  # (49 steps, 8 classes, 3, 32, 32)
     if latent_method in ("score", "wrongclass"):
         # wrongclass: roll(-1) shifts the class axis, so sample i gets class i+1's subspace (wrapping around). Same rank and
         # same kind of direction, but the wrong class. If this damps as well as score, class-specific directions do not matter.
@@ -295,6 +306,8 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
         if "late" in parts and state["g"] < 1:
             # late_<w>: guidance scale w after the window, W before (g = 0 gives exactly w, as with the plain step).
             kwargs["cfg_scale"] = W * state["g"] + parts["late"] * (1 - state["g"])
+        if "gstart" in parts and state["t"] < parts["gstart"]:
+            kwargs["cfg_scale"] = 1.0  # gstart_<t>: no guidance before t
         if method == "w1" or (method == "scalar" and state["active"]):
             # w1: no guidance at any step. scalar: a smaller w during the window, the same in every direction.
             kwargs["cfg_scale"] = 1.0 if method == "w1" else 1 + (W - 1) * (1 - strength)
@@ -309,6 +322,12 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
                 # Projection onto the per-class subspace, as in Intervention.adjust.
                 flat = delta.reshape(n, -1)
                 part = torch.einsum("nk,nkd->nd", torch.einsum("nkd,nd->nk", basis, flat), basis).reshape(delta.shape)
+                if latent_method in ("spec", "swap"):
+                    specific = lambda v: v - torch.einsum("nk,nkd->nd", torch.einsum("nkd,nd->nk", basis, v), basis)
+                    part = specific(flat)
+                    if latent_method == "swap":
+                        part = part - specific(donor[int(round(state["t"] * 49))].reshape(n, -1).float())
+                    part = part.reshape(delta.shape)
             out = out.clone()
             out[:n, :GUIDED_CHANNELS] -= (W - 1) * (parts[latent_method] * state["g"]) * part  # excess guidance loses L g * part
         if "slg" in parts:
@@ -457,6 +476,27 @@ def run_condition(model, sample_fn, condition, seed, device, tables):
     return z.numpy(), final
 
 
+SDE_SEED_OFFSET = 1_000_003  # SDE noise seeds, apart from the initial-noise seeds
+
+
+def sde_sample_fn(sampler, steps):
+    """SiT's SDE sampler with a one-entry cache on the model function. Its drift is v + D(t) score, and it computes the score
+    with a second model call on the same (x, t), so every step would otherwise run the network twice on identical inputs."""
+    inner = sampler.sample_sde(sampling_method="Euler", diffusion_form="sigma", diffusion_norm=1.0, last_step="Mean",
+                               last_step_size=0.04, num_steps=steps)
+
+    def sample(x, model, **kwargs):
+        cache = {}
+
+        def cached(xb, tb, **kw):
+            key = (xb.data_ptr(), xb._version, float(tb[0]))
+            if cache.get("key") != key:
+                cache["key"], cache["out"] = key, model(xb, tb, **kw)
+            return cache["out"]
+        return inner(x, cached, **kwargs)
+    return sample
+
+
 def main():
     """Either fit the tables (--build-tables), or sample every (seed, condition) pair that is not already saved."""
     p = argparse.ArgumentParser()
@@ -468,6 +508,9 @@ def main():
     p.add_argument("--seeds", type=int, nargs="+")
     p.add_argument("--conditions", nargs="+", default=CONDITIONS)
     p.add_argument("--steps", type=int, default=50)
+    p.add_argument("--sampler", choices=["ode", "sde"], default="ode",
+                   help="sde: SiT's Euler-Maruyama sampler (diffusion sigma_t, last step Mean 0.04) with --sde-steps steps")
+    p.add_argument("--sde-steps", type=int, default=100)
     p.add_argument("--device", default="mps")
     p.add_argument("--token-tables", help="tfeat bases; with --build-token-tables, where to write them")
     p.add_argument("--head-ranking", help="JSON list of [block, head], most collapse-specific first (hcond)")
@@ -493,6 +536,10 @@ def main():
                     rank=RANK, low_cutoff=LOW_CUTOFF, feature_blocks=FEATURE_BLOCKS, grid_points=a.steps, model_calls=a.steps - 1,
                     branch_evaluations=2 * (a.steps - 1), sampler="euler", guided_channels=GUIDED_CHANNELS, classes=LABELS, device=a.device,
                     calibration_seeds=saved["seeds"].tolist())
+    if a.sampler == "sde":  # only SDE runs carry these keys, so ODE manifests still match
+        manifest.update(sampler="euler_maruyama", sde_steps=a.sde_steps, diffusion_form="sigma", diffusion_norm=1.0, last_step="Mean",
+                        last_step_size=0.04, model_calls=a.sde_steps, branch_evaluations=2 * a.sde_steps, grid_points=a.sde_steps,
+                        sde_noise_seed=f"torch.manual_seed({SDE_SEED_OFFSET} + seed) before each batch (CPU global generator)")
     if a.token_tables:  # only runs that use tfeat carry these keys, so older manifests still match
         token = np.load(a.token_tables)
         assert not set(a.seeds) & set(token["seeds"].tolist()), "evaluation seeds overlap the token-table calibration seeds"
@@ -508,8 +555,11 @@ def main():
         path.write_text(json.dumps(manifest, indent=2))
 
     model = load_model("SiT-L/2", a.weights, a.device)
-    sample_fn = Sampler(create_transport("Linear", "velocity", None, None, None)).sample_ode(
-        sampling_method="euler", num_steps=a.steps, atol=1e-6, rtol=1e-3, reverse=False)
+    sampler = Sampler(create_transport("Linear", "velocity", None, None, None))
+    if a.sampler == "ode":
+        sample_fn = sampler.sample_ode(sampling_method="euler", num_steps=a.steps, atol=1e-6, rtol=1e-3, reverse=False)
+    else:
+        sample_fn = sde_sample_fn(sampler, a.sde_steps)
     for seed in a.seeds:  # seeds are the outer loop, so stopping early leaves every condition on the same seeds
         for condition in a.conditions:
             target = out / condition / f"seed_{seed}.npz"
@@ -517,6 +567,8 @@ def main():
                 continue
             target.parent.mkdir(exist_ok=True)
             start = time.perf_counter()
+            if a.sampler == "sde":
+                torch.manual_seed(SDE_SEED_OFFSET + seed)  # SiT's SDE draws its noise from the CPU global generator: same per seed
             z, final = run_condition(model, sample_fn, condition, seed, a.device, tables)
             seconds = time.perf_counter() - start
             tmp = target.with_suffix(".tmp.npz")
