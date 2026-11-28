@@ -1,0 +1,251 @@
+%%% -*-BibTeX-*-
+%%% Do NOT edit. File created by BibTeX with style
+%%% ACM-Reference-Format-Journals [18-Jan-2012].
+
+\begin{thebibliography}{14}
+
+%%% ====================================================================
+%%% NOTE TO THE USER: you can override these defaults by providing
+%%% customized versions of any of these macros before the \bibliography
+%%% command.  Each of them MUST provide its own final punctuation,
+%%% except for \shownote{} and \showURL{}.  The latter two
+%%% do not use final punctuation, in order to avoid confusing it with
+%%% the Web address.
+%%%
+%%% To suppress output of a particular field, define its macro to expand
+%%% to an empty string, or better, \unskip, like this:
+%%%
+%%% \newcommand{\showURL}[1]{\unskip}   % LaTeX syntax
+%%%
+%%% \def \showURL #1{\unskip}           % plain TeX syntax
+%%%
+%%% ====================================================================
+
+\ifx \showCODEN    \undefined \def \showCODEN     #1{\unskip}     \fi
+\ifx \showISBNx    \undefined \def \showISBNx     #1{\unskip}     \fi
+\ifx \showISBNxiii \undefined \def \showISBNxiii  #1{\unskip}     \fi
+\ifx \showISSN     \undefined \def \showISSN      #1{\unskip}     \fi
+\ifx \showLCCN     \undefined \def \showLCCN      #1{\unskip}     \fi
+\ifx \shownote     \undefined \def \shownote      #1{#1}          \fi
+\ifx \showarticletitle \undefined \def \showarticletitle #1{#1}   \fi
+\ifx \showURL      \undefined \def \showURL       {\relax}        \fi
+% The following commands are used for tagged output and should be
+% invisible to TeX
+\providecommand\bibfield[2]{#2}
+\providecommand\bibinfo[2]{#2}
+\providecommand\natexlab[1]{#1}
+\providecommand\showeprint[2][]{arXiv:#2}
+
+\bibitem[Dhariwal and Nichol(2021)]%
+        {dhariwal2021beat}
+\bibfield{author}{\bibinfo{person}{Prafulla Dhariwal} {and}
+  \bibinfo{person}{Alex Nichol}.} \bibinfo{year}{2021}\natexlab{}.
+\newblock \showarticletitle{Diffusion Models Beat {GANs} on Image Synthesis}.
+  In \bibinfo{booktitle}{\emph{Advances in Neural Information Processing
+  Systems}}, Vol.~\bibinfo{volume}{34}. \bibinfo{pages}{8780--8794}.
+\newblock
+\urldef\tempurl%
+\url{https://arxiv.org/abs/2105.05233}
+\showURL{%
+\tempurl}
+
+
+\bibitem[Friedman and Dieng(2023)]%
+        {friedman2023vendi}
+\bibfield{author}{\bibinfo{person}{Dan Friedman} {and}
+  \bibinfo{person}{Adji~Bousso Dieng}.} \bibinfo{year}{2023}\natexlab{}.
+\newblock \showarticletitle{The Vendi Score: A Diversity Evaluation Metric for
+  Machine Learning}.
+\newblock \bibinfo{journal}{\emph{Transactions on Machine Learning Research}}
+  (\bibinfo{year}{2023}).
+\newblock
+\urldef\tempurl%
+\url{https://arxiv.org/abs/2210.02410}
+\showURL{%
+\tempurl}
+
+
+\bibitem[Heusel et~al\mbox{.}(2017)]%
+        {heusel2017fid}
+\bibfield{author}{\bibinfo{person}{Martin Heusel}, \bibinfo{person}{Hubert
+  Ramsauer}, \bibinfo{person}{Thomas Unterthiner}, \bibinfo{person}{Bernhard
+  Nessler}, {and} \bibinfo{person}{Sepp Hochreiter}.}
+  \bibinfo{year}{2017}\natexlab{}.
+\newblock \showarticletitle{{GANs} Trained by a Two Time-Scale Update Rule
+  Converge to a Local {Nash} Equilibrium}. In
+  \bibinfo{booktitle}{\emph{Advances in Neural Information Processing
+  Systems}}, Vol.~\bibinfo{volume}{30}. \bibinfo{pages}{6626--6637}.
+\newblock
+\urldef\tempurl%
+\url{https://arxiv.org/abs/1706.08500}
+\showURL{%
+\tempurl}
+
+
+\bibitem[Ho and Salimans(2022)]%
+        {ho2022cfg}
+\bibfield{author}{\bibinfo{person}{Jonathan Ho} {and} \bibinfo{person}{Tim
+  Salimans}.} \bibinfo{year}{2022}\natexlab{}.
+\newblock \showarticletitle{Classifier-Free Diffusion Guidance}.
+\newblock \bibinfo{journal}{\emph{arXiv preprint arXiv:2207.12598}}
+  (\bibinfo{year}{2022}).
+\newblock
+\urldef\tempurl%
+\url{https://arxiv.org/abs/2207.12598}
+\showURL{%
+\tempurl}
+
+
+\bibitem[Jin et~al\mbox{.}(2026)]%
+        {jin2026stagewise}
+\bibfield{author}{\bibinfo{person}{Cheng Jin}, \bibinfo{person}{Qitan Shi},
+  {and} \bibinfo{person}{Yuantao Gu}.} \bibinfo{year}{2026}\natexlab{}.
+\newblock \showarticletitle{Stage-wise Dynamics of Classifier-Free Guidance in
+  Diffusion Models}. In \bibinfo{booktitle}{\emph{The Fourteenth International
+  Conference on Learning Representations (ICLR)}}.
+\newblock
+\urldef\tempurl%
+\url{https://arxiv.org/abs/2509.22007}
+\showURL{%
+\tempurl}
+
+
+\bibitem[Kynk{\"a}{\"a}nniemi et~al\mbox{.}(2024)]%
+        {kynkaanniemi2024interval}
+\bibfield{author}{\bibinfo{person}{Tuomas Kynk{\"a}{\"a}nniemi},
+  \bibinfo{person}{Miika Aittala}, \bibinfo{person}{Tero Karras},
+  \bibinfo{person}{Samuli Laine}, \bibinfo{person}{Timo Aila}, {and}
+  \bibinfo{person}{Jaakko Lehtinen}.} \bibinfo{year}{2024}\natexlab{}.
+\newblock \showarticletitle{Applying Guidance in a Limited Interval Improves
+  Sample and Distribution Quality in Diffusion Models}. In
+  \bibinfo{booktitle}{\emph{Advances in Neural Information Processing
+  Systems}}, Vol.~\bibinfo{volume}{37}. \bibinfo{pages}{122458--122483}.
+\newblock
+\href{https://doi.org/10.52202/079017-3892}{doi:\nolinkurl{10.52202/079017-3892}}
+
+
+\bibitem[Kynk{\"a}{\"a}nniemi et~al\mbox{.}(2019)]%
+        {kynkaanniemi2019precision}
+\bibfield{author}{\bibinfo{person}{Tuomas Kynk{\"a}{\"a}nniemi},
+  \bibinfo{person}{Tero Karras}, \bibinfo{person}{Samuli Laine},
+  \bibinfo{person}{Jaakko Lehtinen}, {and} \bibinfo{person}{Timo Aila}.}
+  \bibinfo{year}{2019}\natexlab{}.
+\newblock \showarticletitle{Improved Precision and Recall Metric for Assessing
+  Generative Models}. In \bibinfo{booktitle}{\emph{Advances in Neural
+  Information Processing Systems}}, Vol.~\bibinfo{volume}{32}.
+\newblock
+\urldef\tempurl%
+\url{https://arxiv.org/abs/1904.06991}
+\showURL{%
+\tempurl}
+
+
+\bibitem[Ma et~al\mbox{.}(2024)]%
+        {ma2024sit}
+\bibfield{author}{\bibinfo{person}{Nanye Ma}, \bibinfo{person}{Mark Goldstein},
+  \bibinfo{person}{Michael~S. Albergo}, \bibinfo{person}{Nicholas~M. Boffi},
+  \bibinfo{person}{Eric Vanden-Eijnden}, {and} \bibinfo{person}{Saining Xie}.}
+  \bibinfo{year}{2024}\natexlab{}.
+\newblock \showarticletitle{{SiT}: Exploring Flow and Diffusion-Based
+  Generative Models with Scalable Interpolant Transformers}. In
+  \bibinfo{booktitle}{\emph{Computer Vision -- ECCV 2024}}
+  \emph{(\bibinfo{series}{Lecture Notes in Computer Science})}.
+  \bibinfo{pages}{23--40}.
+\newblock
+\href{https://doi.org/10.1007/978-3-031-72980-5_2}{doi:\nolinkurl{10.1007/978-3-031-72980-5_2}}
+
+
+\bibitem[Peebles and Xie(2023)]%
+        {peebles2023dit}
+\bibfield{author}{\bibinfo{person}{William Peebles} {and}
+  \bibinfo{person}{Saining Xie}.} \bibinfo{year}{2023}\natexlab{}.
+\newblock \showarticletitle{Scalable Diffusion Models with Transformers}. In
+  \bibinfo{booktitle}{\emph{Proceedings of the IEEE/CVF International
+  Conference on Computer Vision (ICCV)}}. \bibinfo{pages}{4172--4182}.
+\newblock
+\href{https://doi.org/10.1109/ICCV51070.2023.00387}{doi:\nolinkurl{10.1109/ICCV51070.2023.00387}}
+
+
+\bibitem[Sadat et~al\mbox{.}(2024)]%
+        {sadat2024cads}
+\bibfield{author}{\bibinfo{person}{Seyedmorteza Sadat}, \bibinfo{person}{Jakob
+  Buhmann}, \bibinfo{person}{Derek Bradley}, \bibinfo{person}{Otmar Hilliges},
+  {and} \bibinfo{person}{Romann~M. Weber}.} \bibinfo{year}{2024}\natexlab{}.
+\newblock \showarticletitle{{CADS}: Unleashing the Diversity of Diffusion
+  Models through Condition-Annealed Sampling}. In \bibinfo{booktitle}{\emph{The
+  Twelfth International Conference on Learning Representations (ICLR)}}.
+\newblock
+\urldef\tempurl%
+\url{https://arxiv.org/abs/2310.17347}
+\showURL{%
+\tempurl}
+
+
+\bibitem[Sadat et~al\mbox{.}(2025a)]%
+        {sadat2025apg}
+\bibfield{author}{\bibinfo{person}{Seyedmorteza Sadat}, \bibinfo{person}{Otmar
+  Hilliges}, {and} \bibinfo{person}{Romann~M. Weber}.}
+  \bibinfo{year}{2025}\natexlab{a}.
+\newblock \showarticletitle{Eliminating Oversaturation and Artifacts of High
+  Guidance Scales in Diffusion Models}. In \bibinfo{booktitle}{\emph{The
+  Thirteenth International Conference on Learning Representations (ICLR)}}.
+\newblock
+\urldef\tempurl%
+\url{https://arxiv.org/abs/2410.02416}
+\showURL{%
+\tempurl}
+
+
+\bibitem[Sadat et~al\mbox{.}(2025b)]%
+        {sadat2025fdg}
+\bibfield{author}{\bibinfo{person}{Seyedmorteza Sadat}, \bibinfo{person}{Tobias
+  Vontobel}, \bibinfo{person}{Farnood Salehi}, {and} \bibinfo{person}{Romann~M.
+  Weber}.} \bibinfo{year}{2025}\natexlab{b}.
+\newblock \showarticletitle{Guidance in the Frequency Domain Enables
+  High-Fidelity Sampling at Low {CFG} Scales}.
+\newblock \bibinfo{journal}{\emph{arXiv preprint arXiv:2506.19713}}
+  (\bibinfo{year}{2025}).
+\newblock
+\urldef\tempurl%
+\url{https://arxiv.org/abs/2506.19713}
+\showURL{%
+\tempurl}
+
+
+\bibitem[Stein et~al\mbox{.}(2023)]%
+        {stein2023exposing}
+\bibfield{author}{\bibinfo{person}{George Stein}, \bibinfo{person}{Jesse~C.
+  Cresswell}, \bibinfo{person}{Rasa Hosseinzadeh}, \bibinfo{person}{Yi Sui},
+  \bibinfo{person}{Brendan~Leigh Ross}, \bibinfo{person}{Valentin Villecroze},
+  \bibinfo{person}{Zhaoyan Liu}, \bibinfo{person}{Anthony~L. Caterini},
+  \bibinfo{person}{J.~Eric~T. Taylor}, {and} \bibinfo{person}{Gabriel
+  Loaiza-Ganem}.} \bibinfo{year}{2023}\natexlab{}.
+\newblock \showarticletitle{Exposing Flaws of Generative Model Evaluation
+  Metrics and Their Unfair Treatment of Diffusion Models}. In
+  \bibinfo{booktitle}{\emph{Advances in Neural Information Processing
+  Systems}}, Vol.~\bibinfo{volume}{36}.
+\newblock
+\urldef\tempurl%
+\url{https://arxiv.org/abs/2306.04675}
+\showURL{%
+\tempurl}
+
+
+\bibitem[Yu et~al\mbox{.}(2025)]%
+        {yu2025repa}
+\bibfield{author}{\bibinfo{person}{Sihyun Yu}, \bibinfo{person}{Sangkyung
+  Kwak}, \bibinfo{person}{Huiwon Jang}, \bibinfo{person}{Jongheon Jeong},
+  \bibinfo{person}{Jonathan Huang}, \bibinfo{person}{Jinwoo Shin}, {and}
+  \bibinfo{person}{Saining Xie}.} \bibinfo{year}{2025}\natexlab{}.
+\newblock \showarticletitle{Representation Alignment for Generation: Training
+  Diffusion Transformers Is Easier Than You Think}. In
+  \bibinfo{booktitle}{\emph{The Thirteenth International Conference on Learning
+  Representations (ICLR)}}.
+\newblock
+\urldef\tempurl%
+\url{https://arxiv.org/abs/2410.06940}
+\showURL{%
+\tempurl}
+
+
+\end{thebibliography}
