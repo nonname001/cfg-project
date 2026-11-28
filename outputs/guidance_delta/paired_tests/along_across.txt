@@ -1,0 +1,12 @@
+w1                 window  total along -0.181 across 0.414 | direct along +nan across nan | through along +nan across nan | shared along -0.187 | specific along -0.200 across 0.546 | size 0.968
+w1                 after   total along -0.220 across 0.492 | direct along +nan across nan | through along +nan across nan | shared along -0.200 | specific along -0.356 across 0.924 | size 0.951
+score_1            window  total along -0.115 across 0.333 | direct along +0.000 across 0.000 | through along -0.115 across 0.333 | shared along -0.124 | specific along -0.123 across 0.415 | size 0.974
+score_1            after   total along -0.100 across 0.348 | direct along +0.000 across 0.000 | through along -0.100 across 0.348 | shared along -0.081 | specific along -0.221 across 0.682 | size 0.981
+cond_0.25          window  total along -0.245 across 0.148 | direct along -0.197 across 0.080 | through along -0.047 across 0.133 | shared along -0.252 | specific along -0.233 across 0.218 | size 0.778
+cond_0.25          after   total along -0.053 across 0.190 | direct along +0.000 across 0.000 | through along -0.053 across 0.190 | shared along -0.045 | specific along -0.109 across 0.428 | size 0.977
+cond_0.5           window  total along -0.487 across 0.211 | direct along -0.378 across 0.155 | through along -0.109 across 0.250 | shared along -0.491 | specific along -0.491 across 0.299 | size 0.572
+cond_0.5           after   total along -0.113 across 0.314 | direct along +0.000 across 0.000 | through along -0.113 across 0.314 | shared along -0.095 | specific along -0.230 across 0.651 | size 0.959
+cond_1             window  total along -0.862 across 0.129 | direct along -0.615 across 0.386 | through along -0.247 across 0.455 | shared along -0.864 | specific along -0.863 across 0.167 | size 0.206
+cond_1             after   total along -0.231 across 0.518 | direct along +0.000 across 0.000 | through along -0.231 across 0.518 | shared along -0.200 | specific along -0.439 across 0.963 | size 0.958
+score_1+cond_0.5   window  total along -0.547 across 0.288 | direct along -0.350 across 0.214 | through along -0.197 across 0.410 | shared along -0.552 | specific along -0.560 across 0.371 | size 0.564
+score_1+cond_0.5   after   total along -0.181 across 0.448 | direct along +0.000 across 0.000 | through along -0.181 across 0.448 | shared along -0.156 | specific along -0.350 across 0.835 | size 0.956

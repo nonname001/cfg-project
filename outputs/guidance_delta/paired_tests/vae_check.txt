@@ -1,0 +1,12 @@
+  warnings.warn(
+(a) real ImageNet validation images, 50 per class
+original                           DINO 0.473  Vendi  9.36   CLIP 0.195  Vendi  3.11
+VAE encode + decode                DINO 0.490  Vendi 10.05   CLIP 0.193  Vendi  3.07
+    DINO cosine between each image and its reconstruction: 0.957; real latent RMS 0.807
+(b) generated final latents, seeds 16-47: RMS w1 0.764, w4 0.892
+w1                                 DINO 0.655  Vendi 13.96   CLIP 0.204  Vendi  2.99
+w1 scaled up to w4's RMS           DINO 0.656  Vendi 13.89   CLIP 0.192  Vendi  2.83
+w4                                 DINO 0.244  Vendi  3.58   CLIP 0.092  Vendi  1.74
+w4 scaled down to w1's RMS         DINO 0.242  Vendi  3.55   CLIP 0.099  Vendi  1.80
+
+[exited with code 0]

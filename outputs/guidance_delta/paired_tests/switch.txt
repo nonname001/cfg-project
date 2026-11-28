@@ -1,0 +1,16 @@
+w1           s_t 0.00  sem lambda 0.00 [0.00,0.00] layout lambda 0.00 [0.00,0.00]  off 0.00/0.00  dino div 0.627  layout V 0.819  prec 0.24
+w4           s_t 1.00  sem lambda 1.00 [1.00,1.00] layout lambda 1.00 [1.00,1.00]  off 0.00/0.00  dino div 0.228  layout V 0.580  prec 0.68
+w4to1_k3     s_t 0.06  sem lambda 0.36 [0.30,0.41] layout lambda 0.34 [0.31,0.36]  off 0.56/0.28  dino div 0.536  layout V 0.659  prec 0.22
+w4to1_k6     s_t 0.12  sem lambda 0.59 [0.56,0.63] layout lambda 0.62 [0.61,0.65]  off 0.57/0.33  dino div 0.486  layout V 0.596  prec 0.27
+w4to1_k10    s_t 0.20  sem lambda 0.76 [0.74,0.79] layout lambda 0.86 [0.85,0.87]  off 0.52/0.26  dino div 0.402  layout V 0.580  prec 0.34
+w4to1_k15    s_t 0.31  sem lambda 0.86 [0.85,0.88] layout lambda 0.95 [0.95,0.96]  off 0.42/0.17  dino div 0.353  layout V 0.579  prec 0.40
+w4to1_k20    s_t 0.41  sem lambda 0.92 [0.91,0.92] layout lambda 0.98 [0.98,0.98]  off 0.33/0.11  dino div 0.309  layout V 0.580  prec 0.46
+w4to1_k28    s_t 0.57  sem lambda 0.97 [0.97,0.98] layout lambda 0.99 [0.99,0.99]  off 0.20/0.05  dino div 0.270  layout V 0.580  prec 0.54
+w1to4_k3     s_t 0.06  sem lambda 0.89 [0.88,0.90] layout lambda 0.67 [0.65,0.68]  off 0.37/0.35  dino div 0.252  layout V 0.691  prec 0.67
+w1to4_k6     s_t 0.12  sem lambda 0.84 [0.81,0.85] layout lambda 0.33 [0.30,0.36]  off 0.46/0.40  dino div 0.269  layout V 0.760  prec 0.71
+w1to4_k10    s_t 0.20  sem lambda 0.74 [0.72,0.77] layout lambda 0.15 [0.13,0.16]  off 0.50/0.33  dino div 0.322  layout V 0.793  prec 0.61
+w1to4_k15    s_t 0.31  sem lambda 0.65 [0.63,0.66] layout lambda 0.05 [0.05,0.06]  off 0.52/0.22  dino div 0.351  layout V 0.809  prec 0.63
+w1to4_k20    s_t 0.41  sem lambda 0.56 [0.53,0.58] layout lambda 0.02 [0.02,0.03]  off 0.50/0.14  dino div 0.389  layout V 0.814  prec 0.41
+w1to4_k28    s_t 0.57  sem lambda 0.35 [0.34,0.36] layout lambda 0.01 [0.01,0.01]  off 0.44/0.06  dino div 0.466  layout V 0.818  prec 0.38
+sem: s_t at which a sample is half committed to its w = 4 outcome: median 0.09 (IQR 0.06-0.17); per class medians 0.07, 0.18, 0.08, 0.07, 0.11, 0.07, 0.10, 0.13
+layout: s_t at which a sample is half committed to its w = 4 outcome: median 0.10 (IQR 0.07-0.12); per class medians 0.09, 0.11, 0.11, 0.07, 0.15, 0.05, 0.08, 0.12

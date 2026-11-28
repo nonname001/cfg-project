@@ -1,0 +1,24 @@
+1. silhouette (cosine) of k-means on the 1,300 real images per class; 0 = no structure, higher = clearer subclusters
+   K:          2     3     4     5     6     7     8     9    10    11    12
+   golden retriever  0.27  0.16  0.12  0.11  0.10  0.06  0.10  0.07  0.07  0.07  0.07
+   otter             0.40  0.31  0.20  0.17  0.17  0.15  0.14  0.08  0.06  0.06  0.07
+   lesser panda      0.33  0.18  0.16  0.14  0.06  0.05  0.03  0.08  0.02  0.01  0.01
+   geyser            0.18  0.16  0.16  0.12  0.09  0.10  0.09  0.09  0.09  0.10  0.10
+   macaw             0.35  0.14  0.15  0.13  0.12  0.16  0.16  0.16  0.12  0.14  0.12
+   valley            0.16  0.16  0.12  0.12  0.12  0.13  0.12  0.12  0.11  0.11  0.12
+   balloon           0.44  0.18  0.16  0.15  0.15  0.06  0.07  0.06  0.07  0.06  0.04
+   arctic fox        0.19  0.09  0.16  0.09  0.07  0.08  0.08  0.07  0.04  0.07  0.07
+
+2. K = 8: effective number of subclusters in the real distribution itself: 6.84 (mean over classes)
+                eff. subclusters  TV to real shares  top share  eff. (on-manifold only)  n on-manifold
+   real sample              5.97               0.19       0.29                     5.83           25.4
+   w1                       6.14               0.35       0.30                     3.18            8.4
+   w4                       3.33               0.36       0.49                     2.89           23.5
+   score_1                  3.94               0.31       0.39                     3.56           21.6
+   wall_3                   3.48               0.36       0.46                     3.29           21.2
+   cond_0.5                 4.11               0.31       0.45                     3.85           18.1
+   cond_0.75                5.00               0.27       0.38                     4.51           18.1
+   cond_1                   5.16               0.31       0.38                     3.98           14.0
+   scalar_1                 4.92               0.24       0.37                     4.11           16.1
+
+3. validation images per subcluster (steering references), class means: 0.8 min, 14.1 max per subcluster; saved outputs/guidance_delta/analysis/subclusters_k8.npz

@@ -1,0 +1,25 @@
+384 unconditional samples; band dimension 196
+check E[x_1]: network x_0 + f_uncond(0) vs uncond sample mean: rel. diff 0.395; x_0 + f_cond(0) vs w = 1 class means: rel. diff 0.378
+
+S(Delta) in the low band, w = 4 (theory: population; SiT: 16 seeds, debiased)
+  s_t 0.00: Gaussian 1.000   SiT 0.997
+  s_t 0.06: Gaussian 0.541   SiT 0.670
+  s_t 0.12: Gaussian 0.370   SiT 0.304
+  s_t 0.20: Gaussian 0.278   SiT 0.125
+  s_t 0.31: Gaussian 0.216   SiT 0.081
+  s_t 0.41: Gaussian 0.187   SiT 0.059
+  s_t 0.51: Gaussian 0.174   SiT 0.055
+  s_t 0.71: Gaussian 0.167   SiT 0.055
+  s_t 0.98: Gaussian 0.167   SiT 0.125
+
+layout spread V_low (mean over classes)      Gaussian    SiT
+  w1                                          0.854     0.819
+  w4                                          0.802     0.580
+  early                                       0.691     0.579
+  late                                        0.942     0.809
+  gauss: V_w4 / V_w1 = 0.94; share of the w = 4 layout loss reproduced: early-only 1.89, late-only -0.91
+  sit: V_w4 / V_w1 = 0.70; share of the w = 4 layout loss reproduced: early-only 1.00, late-only 0.04
+
+per-seed: Gaussian A eps + b vs SiT's own final low band, same noise (class-centered; mean over classes)
+  w1: R^2 0.62, mean cosine 0.90   per class R^2 0.64, 0.71, 0.58, 0.61, 0.61, 0.61, 0.64, 0.57
+  w4: R^2 -76.32, mean cosine 0.45   per class R^2 -70.29, -49.75, -56.91, -103.11, -87.22, -60.19, -134.52, -48.54

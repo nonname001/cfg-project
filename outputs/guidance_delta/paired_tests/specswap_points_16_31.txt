@@ -1,0 +1,5 @@
+w4                                         precRet 1.00 dino 0.00 clip 0.00 vendi_dino 0.00 vendi_clip 0.00
+spec_1                                     precRet 0.81 dino 0.08 clip 0.18 vendi_dino 0.05 vendi_clip 0.17
+swap_1                                     precRet 0.77 dino 0.07 clip 0.18 vendi_dino 0.06 vendi_clip 0.17
+score_1                                    precRet 0.81 dino 0.10 clip 0.17 vendi_dino 0.08 vendi_clip 0.16
+scalar_1                                   precRet 0.60 dino 0.28 clip 0.38 vendi_dino 0.23 vendi_clip 0.37

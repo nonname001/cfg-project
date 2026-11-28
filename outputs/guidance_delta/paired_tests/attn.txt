@@ -1,0 +1,7 @@
+blocks 0-7   window  class_l1 w1 0.079 w4 0.083 | entropy w4-w1 -0.0034 [-0.0037,-0.0031] | distance w4-w1 -0.011 [-0.013,-0.009] | seed_sim w1 0.358 w4 0.390 (w4-w1 +0.031 [+0.027,+0.035])
+blocks 0-7   after   class_l1 w1 0.064 w4 0.070 | entropy w4-w1 -0.0055 [-0.0061,-0.0049] | distance w4-w1 -0.021 [-0.028,-0.014] | seed_sim w1 0.243 w4 0.309 (w4-w1 +0.065 [+0.055,+0.075])
+blocks 8-15  window  class_l1 w1 0.322 w4 0.330 | entropy w4-w1 -0.0051 [-0.0058,-0.0044] | distance w4-w1 -0.053 [-0.063,-0.043] | seed_sim w1 0.517 w4 0.521 (w4-w1 +0.004 [-0.000,+0.009])
+blocks 8-15  after   class_l1 w1 0.197 w4 0.197 | entropy w4-w1 -0.0056 [-0.0073,-0.0041] | distance w4-w1 -0.013 [-0.049,+0.019] | seed_sim w1 0.366 w4 0.385 (w4-w1 +0.018 [+0.011,+0.026])
+blocks 16-23 window  class_l1 w1 0.401 w4 0.389 | entropy w4-w1 -0.0152 [-0.0173,-0.0128] | distance w4-w1 -0.108 [-0.141,-0.076] | seed_sim w1 0.408 w4 0.408 (w4-w1 +0.000 [-0.006,+0.007])
+blocks 16-23 after   class_l1 w1 0.256 w4 0.224 | entropy w4-w1 -0.0152 [-0.0184,-0.0116] | distance w4-w1 -0.059 [-0.123,+0.004] | seed_sim w1 0.186 w4 0.208 (w4-w1 +0.022 [+0.013,+0.031])
+most class-dependent heads in the window (block.head: class_l1): 17.2: 0.722, 17.7: 0.711, 15.14: 0.678, 17.15: 0.671, 17.5: 0.657, 15.8: 0.655, 17.12: 0.633, 16.3: 0.632, 17.3: 0.618, 19.7: 0.612

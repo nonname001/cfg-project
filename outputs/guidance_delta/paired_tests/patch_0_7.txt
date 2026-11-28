@@ -1,0 +1,89 @@
+SiT-L_2_patch: each condition on its own seeds (n = seeds; x 8 classes = samples)
+
+== recipient w = 1, donor w = 4: does this part carry the guided outcome?
+-- k = 5 (s_t 0.10): median lambda toward the donor's outcome [95%]; off = distance from the line
+   velocity transplant  sem +0.27 [+0.17,+0.42]  layout +0.29 [+0.25,+0.34]  off 0.51/0.21  n=8
+   x_t band high        sem +0.01 [+0.01,+0.02]  layout +0.01 [+0.00,+0.01]  off 0.08/0.02  n=8
+   x_t band low         sem +0.51 [+0.38,+0.60]  layout +0.54 [+0.47,+0.57]  off 0.60/0.34  n=8
+   x_t band mid         sem +0.01 [+0.01,+0.02]  layout +0.01 [+0.00,+0.01]  off 0.11/0.02  n=8
+   low band, shared     sem +0.37 [+0.29,+0.47]  layout +0.40 [+0.35,+0.46]  off 0.60/0.36  n=8
+   low band, seed-spec. sem +0.16 [+0.10,+0.23]  layout +0.11 [+0.08,+0.17]  off 0.46/0.23  n=8
+   write block  4       sem +0.01 [-0.00,+0.03] (share 0.05)  layout +0.02 [+0.01,+0.03]  off 0.09/0.02  n=2
+   write block 10       sem +0.05 [+0.03,+0.07] (share 0.17)  layout +0.04 [+0.03,+0.05]  off 0.20/0.05  n=8
+   write block 13       sem +0.04 [+0.03,+0.07] (share 0.16)  layout +0.04 [+0.03,+0.04]  off 0.25/0.06  n=8
+   write block 15       sem +0.05 [+0.03,+0.07] (share 0.18)  layout +0.04 [+0.03,+0.05]  off 0.27/0.06  n=8
+   write block 17       sem +0.04 [+0.00,+0.11] (share 0.13)  layout +0.02 [+0.01,+0.04]  off 0.24/0.04  n=2
+   write block 20       sem +0.05 [+0.03,+0.06] (share 0.17)  layout +0.03 [+0.03,+0.04]  off 0.23/0.05  n=8
+   write block 23       sem +0.05 [+0.02,+0.11] (share 0.17)  layout +0.04 [+0.03,+0.08]  off 0.26/0.05  n=2
+-- k = 12 (s_t 0.24): median lambda toward the donor's outcome [95%]; off = distance from the line
+   velocity transplant  sem +0.39 [+0.31,+0.46]  layout +0.29 [+0.28,+0.30]  off 0.59/0.16  n=8
+   x_t band high        sem +0.07 [+0.05,+0.10]  layout +0.02 [+0.01,+0.02]  off 0.31/0.05  n=8
+   x_t band low         sem +0.72 [+0.63,+0.80]  layout +0.86 [+0.84,+0.88]  off 0.57/0.27  n=8
+   x_t band mid         sem +0.13 [+0.11,+0.18]  layout +0.03 [+0.03,+0.04]  off 0.40/0.09  n=8
+   low band, shared     sem +0.40 [+0.28,+0.49]  layout +0.45 [+0.38,+0.50]  off 0.62/0.43  n=8
+   low band, seed-spec. sem +0.53 [+0.41,+0.63]  layout +0.37 [+0.34,+0.45]  off 0.62/0.38  n=8
+   write block  4       sem +0.03 [+0.01,+0.05] (share 0.08)  layout +0.02 [+0.02,+0.04]  off 0.15/0.03  n=2
+   write block 10       sem +0.07 [+0.04,+0.13] (share 0.18)  layout +0.03 [+0.03,+0.04]  off 0.34/0.06  n=8
+   write block 13       sem +0.10 [+0.04,+0.14] (share 0.26)  layout +0.04 [+0.03,+0.05]  off 0.40/0.08  n=8
+   write block 15       sem +0.08 [+0.04,+0.15] (share 0.21)  layout +0.04 [+0.03,+0.05]  off 0.41/0.09  n=8
+   write block 17       sem +0.05 [+0.02,+0.07] (share 0.13)  layout +0.03 [+0.02,+0.04]  off 0.37/0.07  n=2
+   write block 20       sem +0.07 [+0.04,+0.10] (share 0.17)  layout +0.04 [+0.04,+0.04]  off 0.32/0.06  n=8
+   write block 23       sem +0.07 [+0.04,+0.11] (share 0.17)  layout +0.04 [+0.04,+0.06]  off 0.31/0.05  n=2
+-- k = 20 (s_t 0.41): median lambda toward the donor's outcome [95%]; off = distance from the line
+   velocity transplant  sem +0.27 [+0.18,+0.35]  layout +0.21 [+0.21,+0.22]  off 0.56/0.09  n=8
+   x_t band high        sem +0.24 [+0.18,+0.30]  layout +0.03 [+0.02,+0.04]  off 0.49/0.09  n=8
+   x_t band low         sem +0.68 [+0.57,+0.72]  layout +0.91 [+0.89,+0.92]  off 0.56/0.19  n=8
+   x_t band mid         sem +0.18 [+0.14,+0.23]  layout +0.03 [+0.03,+0.04]  off 0.47/0.09  n=8
+   low band, shared     sem +0.21 [+0.15,+0.26]  layout +0.40 [+0.34,+0.45]  off 0.55/0.43  n=8
+   low band, seed-spec. sem +0.52 [+0.43,+0.58]  layout +0.49 [+0.45,+0.52]  off 0.62/0.41  n=8
+   write block  4       sem +0.05 [+0.03,+0.07] (share 0.17)  layout +0.02 [+0.02,+0.03]  off 0.24/0.03  n=2
+   write block 10       sem +0.05 [+0.02,+0.09] (share 0.19)  layout +0.02 [+0.01,+0.02]  off 0.27/0.04  n=8
+   write block 13       sem +0.06 [+0.04,+0.11] (share 0.22)  layout +0.02 [+0.02,+0.03]  off 0.39/0.06  n=8
+   write block 15       sem +0.07 [+0.04,+0.09] (share 0.25)  layout +0.02 [+0.02,+0.03]  off 0.39/0.06  n=8
+   write block 17       sem +0.05 [-0.01,+0.11] (share 0.19)  layout +0.02 [+0.01,+0.03]  off 0.35/0.05  n=2
+   write block 20       sem +0.05 [+0.04,+0.06] (share 0.19)  layout +0.03 [+0.02,+0.03]  off 0.29/0.04  n=8
+   write block 23       sem +0.07 [+0.03,+0.11] (share 0.26)  layout +0.03 [+0.03,+0.03]  off 0.27/0.04  n=2
+
+== recipient w = 4, donor w = 1: can this part undo it?
+-- k = 5 (s_t 0.10): median lambda toward the donor's outcome [95%]; off = distance from the line
+   velocity transplant  sem +0.14 [+0.08,+0.16]  layout +0.32 [+0.25,+0.38]  off 0.39/0.36  n=8 | DINO recovery +0.01, precision 0.72 (w4 0.69)
+   x_t band high        sem +0.00 [+0.00,+0.00]  layout +0.00 [+0.00,+0.00]  off 0.05/0.02  n=8 | DINO recovery +0.01, precision 0.73 (w4 0.69)
+   x_t band low         sem +0.17 [+0.11,+0.21]  layout +0.54 [+0.50,+0.60]  off 0.44/0.40  n=8 | DINO recovery +0.04, precision 0.70 (w4 0.69)
+   x_t band mid         sem +0.00 [+0.00,+0.00]  layout +0.00 [+0.00,+0.00]  off 0.06/0.03  n=8 | DINO recovery +0.01, precision 0.73 (w4 0.69)
+   low band, shared     sem +0.09 [+0.06,+0.14]  layout +0.38 [+0.32,+0.45]  off 0.39/0.43  n=8 | DINO recovery -0.00, precision 0.69 (w4 0.69)
+   low band, seed-spec. sem +0.05 [+0.03,+0.06]  layout +0.09 [+0.07,+0.13]  off 0.25/0.25  n=8 | DINO recovery -0.04, precision 0.69 (w4 0.69)
+   write block  4       sem +0.00 [-0.00,+0.01] (share 0.02)  layout +0.01 [+0.00,+0.02]  off 0.08/0.04  n=2 | DINO recovery -0.02, precision 0.62 (w4 0.69)
+   write block 10       sem +0.02 [+0.01,+0.03] (share 0.13)  layout +0.02 [+0.01,+0.03]  off 0.18/0.10  n=8 | DINO recovery -0.00, precision 0.67 (w4 0.69)
+   write block 13       sem +0.03 [+0.02,+0.05] (share 0.22)  layout +0.04 [+0.02,+0.06]  off 0.24/0.19  n=8 | DINO recovery -0.02, precision 0.69 (w4 0.69)
+   write block 15       sem +0.04 [+0.03,+0.07] (share 0.30)  layout +0.07 [+0.04,+0.10]  off 0.27/0.24  n=8 | DINO recovery -0.03, precision 0.72 (w4 0.69)
+   write block 17       sem +0.03 [+0.02,+0.04] (share 0.21)  layout +0.02 [+0.01,+0.05]  off 0.21/0.14  n=2 | DINO recovery -0.04, precision 0.69 (w4 0.69)
+   write block 20       sem +0.02 [+0.01,+0.03] (share 0.17)  layout +0.04 [+0.03,+0.05]  off 0.19/0.13  n=8 | DINO recovery -0.01, precision 0.69 (w4 0.69)
+   write block 23       sem +0.01 [+0.00,+0.02] (share 0.06)  layout +0.02 [+0.02,+0.04]  off 0.14/0.10  n=2 | DINO recovery +0.03, precision 0.62 (w4 0.69)
+-- k = 12 (s_t 0.24): median lambda toward the donor's outcome [95%]; off = distance from the line
+   velocity transplant  sem +0.13 [+0.10,+0.17]  layout +0.26 [+0.24,+0.28]  off 0.39/0.24  n=8 | DINO recovery +0.04, precision 0.69 (w4 0.69)
+   x_t band high        sem +0.01 [+0.01,+0.02]  layout +0.00 [+0.00,+0.01]  off 0.12/0.05  n=8 | DINO recovery +0.02, precision 0.69 (w4 0.69)
+   x_t band low         sem +0.26 [+0.18,+0.30]  layout +0.82 [+0.77,+0.84]  off 0.49/0.31  n=8 | DINO recovery +0.19, precision 0.61 (w4 0.69)
+   x_t band mid         sem +0.01 [+0.01,+0.02]  layout +0.01 [+0.01,+0.02]  off 0.15/0.08  n=8 | DINO recovery +0.00, precision 0.75 (w4 0.69)
+   low band, shared     sem +0.08 [+0.05,+0.11]  layout +0.37 [+0.32,+0.42]  off 0.32/0.40  n=8 | DINO recovery -0.01, precision 0.75 (w4 0.69)
+   low band, seed-spec. sem +0.15 [+0.09,+0.18]  layout +0.32 [+0.28,+0.37]  off 0.40/0.41  n=8 | DINO recovery +0.04, precision 0.55 (w4 0.69)
+   write block  4       sem +0.00 [+0.00,+0.01] (share 0.03)  layout +0.01 [+0.01,+0.02]  off 0.08/0.03  n=2 | DINO recovery -0.01, precision 0.69 (w4 0.69)
+   write block 10       sem +0.02 [+0.01,+0.03] (share 0.15)  layout +0.01 [+0.01,+0.02]  off 0.17/0.10  n=8 | DINO recovery +0.01, precision 0.72 (w4 0.69)
+   write block 13       sem +0.04 [+0.02,+0.06] (share 0.29)  layout +0.02 [+0.01,+0.04]  off 0.25/0.15  n=8 | DINO recovery +0.00, precision 0.70 (w4 0.69)
+   write block 15       sem +0.05 [+0.04,+0.07] (share 0.41)  layout +0.05 [+0.03,+0.08]  off 0.27/0.18  n=8 | DINO recovery -0.01, precision 0.77 (w4 0.69)
+   write block 17       sem +0.05 [+0.03,+0.12] (share 0.37)  layout +0.03 [+0.02,+0.06]  off 0.24/0.14  n=2 | DINO recovery +0.04, precision 0.62 (w4 0.69)
+   write block 20       sem +0.02 [+0.01,+0.03] (share 0.18)  layout +0.03 [+0.02,+0.04]  off 0.18/0.12  n=8 | DINO recovery -0.01, precision 0.77 (w4 0.69)
+   write block 23       sem +0.01 [+0.01,+0.04] (share 0.12)  layout +0.04 [+0.02,+0.05]  off 0.15/0.07  n=2 | DINO recovery +0.02, precision 0.69 (w4 0.69)
+-- k = 20 (s_t 0.41): median lambda toward the donor's outcome [95%]; off = distance from the line
+   velocity transplant  sem +0.09 [+0.08,+0.11]  layout +0.20 [+0.19,+0.21]  off 0.30/0.12  n=8 | DINO recovery +0.04, precision 0.66 (w4 0.69)
+   x_t band high        sem +0.05 [+0.03,+0.06]  layout +0.01 [+0.01,+0.01]  off 0.22/0.09  n=8 | DINO recovery +0.02, precision 0.73 (w4 0.69)
+   x_t band low         sem +0.25 [+0.18,+0.31]  layout +0.85 [+0.83,+0.88]  off 0.47/0.22  n=8 | DINO recovery +0.16, precision 0.64 (w4 0.69)
+   x_t band mid         sem +0.03 [+0.02,+0.04]  layout +0.02 [+0.02,+0.03]  off 0.21/0.09  n=8 | DINO recovery +0.02, precision 0.70 (w4 0.69)
+   low band, shared     sem +0.04 [+0.03,+0.06]  layout +0.37 [+0.34,+0.41]  off 0.26/0.43  n=8 | DINO recovery +0.02, precision 0.72 (w4 0.69)
+   low band, seed-spec. sem +0.12 [+0.07,+0.16]  layout +0.43 [+0.37,+0.46]  off 0.38/0.39  n=8 | DINO recovery +0.13, precision 0.55 (w4 0.69)
+   write block  4       sem +0.00 [-0.00,+0.01] (share 0.04)  layout +0.01 [+0.01,+0.02]  off 0.07/0.03  n=2 | DINO recovery +0.00, precision 0.75 (w4 0.69)
+   write block 10       sem +0.01 [+0.00,+0.01] (share 0.07)  layout +0.01 [+0.01,+0.01]  off 0.11/0.04  n=8 | DINO recovery -0.01, precision 0.70 (w4 0.69)
+   write block 13       sem +0.02 [+0.01,+0.03] (share 0.26)  layout +0.01 [+0.00,+0.01]  off 0.16/0.07  n=8 | DINO recovery +0.02, precision 0.72 (w4 0.69)
+   write block 15       sem +0.03 [+0.02,+0.04] (share 0.33)  layout +0.02 [+0.01,+0.02]  off 0.19/0.08  n=8 | DINO recovery +0.02, precision 0.75 (w4 0.69)
+   write block 17       sem +0.02 [+0.01,+0.04] (share 0.22)  layout +0.02 [+0.01,+0.05]  off 0.17/0.08  n=2 | DINO recovery -0.04, precision 0.75 (w4 0.69)
+   write block 20       sem +0.02 [+0.01,+0.03] (share 0.19)  layout +0.02 [+0.01,+0.02]  off 0.14/0.05  n=8 | DINO recovery +0.01, precision 0.72 (w4 0.69)
+   write block 23       sem +0.01 [+0.01,+0.02] (share 0.13)  layout +0.02 [+0.02,+0.03]  off 0.12/0.05  n=2 | DINO recovery +0.01, precision 0.69 (w4 0.69)

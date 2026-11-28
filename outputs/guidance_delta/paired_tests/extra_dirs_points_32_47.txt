@@ -1,0 +1,6 @@
+w4                                         precRet 1.00 dino 0.00 clip 0.00 vendi_dino 0.00 vendi_clip 0.00
+cond_1                                     precRet 0.38 dino 0.56 clip 0.85 vendi_dino 0.47 vendi_clip 0.81
+cond_1+rec                                 precRet 0.38 dino 0.56 clip 0.85 vendi_dino 0.47 vendi_clip 0.81
+cond_1+xablate                             precRet 0.28 dino 0.53 clip 0.78 vendi_dino 0.44 vendi_clip 0.74
+cond_1+oablate                             precRet 0.21 dino 0.54 clip 0.77 vendi_dino 0.47 vendi_clip 0.75
+w4+xinject                                 precRet 0.83 dino 0.04 clip 0.06 vendi_dino 0.03 vendi_clip 0.06
